@@ -1,0 +1,300 @@
+import importlib.util
+import json
+import sys
+import tempfile
+import unittest
+from pathlib import Path
+from unittest.mock import patch
+
+
+SCRIPT_PATH = Path(__file__).parents[2] / "scripts" / "organize-audiobooks-by-metadata-v3_7.py"
+SPEC = importlib.util.spec_from_file_location("organizer_v3_7", SCRIPT_PATH)
+ORGANIZER = importlib.util.module_from_spec(SPEC)
+assert SPEC and SPEC.loader
+sys.modules[SPEC.name] = ORGANIZER
+SPEC.loader.exec_module(ORGANIZER)
+
+
+class OrganizerMetadataInferenceTests(unittest.TestCase):
+    def test_representative_filename_does_not_override_dashing_devil_title(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            book_dir = root / "Dashing Devil" / "Dashing Devil 5 - Bold Beginnings"
+            book_dir.mkdir(parents=True)
+            audio = book_dir / "G.D. Brooks - Dashing Devil 5 - Bold Beginnings.m4b"
+            audio.touch()
+            marker = audio.with_name(audio.name + ".audible-metadata-fixer.json")
+            marker.write_text(
+                json.dumps(
+                    {
+                        "audible": {
+                            "chosen_title": "Dashing Devil 5: Bold Beginnings",
+                            "author": "G.D. Brooks",
+                            "series": "Dashing Devil",
+                            "sequence": "5",
+                        }
+                    }
+                ),
+                encoding="utf-8",
+            )
+            item = ORGANIZER.BookItem("folder", book_dir, [audio], audio)
+
+            metadata = ORGANIZER.infer_metadata(item, root, prefer_path_structure=True)
+
+            self.assertEqual(metadata["title"], "Bold Beginnings")
+            self.assertEqual(metadata["author"], "G.D. Brooks")
+            self.assertEqual(metadata["book_number"], "005")
+            self.assertEqual(
+                ORGANIZER.build_book_folder_name(metadata),
+                "Book 5 - Bold Beginnings",
+            )
+
+    def test_numeric_grouped_track_filename_still_supplies_author_and_title(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            book_dir = root / "CS Pacat Dark Rise"
+            book_dir.mkdir()
+            audio = book_dir / "CS Pacat - Dark Rise - 001.mp3"
+            audio.touch()
+            item = ORGANIZER.BookItem("folder", book_dir, [audio], audio)
+
+            clues = ORGANIZER.path_clues(item, root)
+
+            self.assertEqual(clues["author"], "CS Pacat")
+            self.assertEqual(clues["title"], "Dark Rise")
+
+    def test_ambiguous_folder_keeps_sidecar_title_author_and_series(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            book_dir = (
+                root
+                / "Shane Walker - Corporate Warfare All Trades, Book 3"
+            )
+            book_dir.mkdir()
+            audio = book_dir / "Chapter 01.m4b"
+            audio.touch()
+            marker = audio.with_name(audio.name + ".audible-metadata-fixer.json")
+            marker.write_text(
+                json.dumps(
+                    {
+                        "audible": {
+                            "chosen_title": "Corporate Warfare",
+                            "author": "Shane Walker",
+                            "series": "All Trades",
+                            "sequence": "3",
+                        }
+                    }
+                ),
+                encoding="utf-8",
+            )
+            item = ORGANIZER.BookItem("folder", book_dir, [audio], audio)
+
+            metadata = ORGANIZER.infer_metadata(
+                item,
+                root,
+                prefer_path_structure=True,
+            )
+
+            self.assertEqual(metadata["title"], "Corporate Warfare")
+            self.assertEqual(metadata["author"], "Shane Walker")
+            self.assertEqual(metadata["series"], "All Trades")
+            self.assertEqual(metadata["book_number"], "003")
+            self.assertEqual(metadata["review_reasons"], [])
+
+    def test_clean_author_series_volume_path_supplies_all_path_clues(self):
+        root = Path("/library")
+        book_dir = (
+            root
+            / "Isuna Hasekura"
+            / "Spice and Wolf"
+            / "Volume 7 - Side Colors"
+        )
+        audio = book_dir / "01 Chapter.opus"
+        item = ORGANIZER.BookItem("folder", book_dir, [audio], audio)
+
+        clues = ORGANIZER.path_clues(item, root)
+
+        self.assertEqual(clues["title"], "Side Colors")
+        self.assertEqual(clues["parent_author"], "Isuna Hasekura")
+        self.assertEqual(clues["series"], "Spice and Wolf")
+        self.assertEqual(clues["book_number"], "007")
+        self.assertEqual(clues["sequence_label"], "Volume")
+
+    def test_missing_author_in_tags_is_flagged_when_inferred_from_path(self):
+        root = Path("/library")
+        book_dir = root / "Jane Doe - Standalone Story"
+        audio = book_dir / "Chapter 01.mp3"
+        item = ORGANIZER.BookItem("folder", book_dir, [audio], audio)
+        tag_metadata = {
+            "title": "Standalone Story",
+            "author": "Unknown Author",
+            "series": "",
+            "book_number": "",
+            "sequence_label": "",
+            "narrator": "",
+            "source": "ffprobe",
+        }
+
+        with patch.object(ORGANIZER, "metadata_from_sidecar", return_value=None):
+            with patch.object(ORGANIZER, "metadata_from_tags", return_value=tag_metadata):
+                metadata = ORGANIZER.infer_metadata(item, root)
+
+        self.assertEqual(metadata["author"], "Jane Doe")
+        self.assertIn("author inferred from path", metadata["review_reasons"])
+
+    def test_conflicting_book_number_is_flagged(self):
+        root = Path("/library")
+        book_dir = root / "Example Series, Book 2 - Second"
+        audio = book_dir / "book.m4b"
+        item = ORGANIZER.BookItem("folder", book_dir, [audio], audio)
+        tag_metadata = {
+            "title": "Second",
+            "author": "Jane Doe",
+            "series": "Example Series",
+            "book_number": "001",
+            "sequence_label": "Book",
+            "narrator": "",
+            "source": "marker:test.json",
+        }
+
+        with patch.object(ORGANIZER, "metadata_from_sidecar", return_value=tag_metadata):
+            metadata = ORGANIZER.infer_metadata(item, root)
+
+        self.assertEqual(metadata["book_number"], "002")
+        self.assertIn(
+            "book number differs between metadata and path",
+            metadata["review_reasons"],
+        )
+
+    def test_batch_author_correction_is_flagged(self):
+        metadata = {
+            "title": "Book Two",
+            "author": "Example",
+            "author_primary": "Example",
+            "series": "Example Series",
+            "review_reasons": [],
+        }
+
+        corrected = ORGANIZER.apply_run_author_correction(
+            metadata,
+            {ORGANIZER.normalize_series_key("Example Series"): "Jane Doe"},
+        )
+
+        self.assertEqual(corrected["author"], "Jane Doe")
+        self.assertIn(
+            "author inferred from other books in this run",
+            corrected["review_reasons"],
+        )
+
+
+class OrganizerMultiFileTests(unittest.TestCase):
+    def test_natural_audio_sort_orders_numeric_parts(self):
+        paths = [Path("Chapter 10.m4a"), Path("Chapter 2.m4a"), Path("Chapter 1.m4a")]
+
+        ordered = sorted(paths, key=ORGANIZER.natural_audio_sort_key)
+
+        self.assertEqual(
+            [path.name for path in ordered],
+            ["Chapter 1.m4a", "Chapter 2.m4a", "Chapter 10.m4a"],
+        )
+
+    def test_low_chapter_count_named_m4a_parts_are_grouped(self):
+        files = [Path("/book/Chapter 1.m4a"), Path("/book/Chapter 2.m4a")]
+
+        with patch.object(ORGANIZER, "read_file_chapter_count", return_value=2):
+            self.assertTrue(ORGANIZER.looks_like_multi_file_book(files))
+
+    def test_complete_chapterized_m4b_files_are_not_grouped(self):
+        files = [Path("/book/Book 1.m4b"), Path("/book/Book 2.m4b")]
+
+        with patch.object(ORGANIZER, "read_file_chapter_count", return_value=20):
+            self.assertFalse(ORGANIZER.looks_like_multi_file_book(files))
+
+    def test_low_chapter_count_complete_m4b_files_are_not_grouped(self):
+        files = [Path("/book/Book 1.m4b"), Path("/book/Book 2.m4b")]
+
+        with patch.object(ORGANIZER, "read_file_chapter_count", return_value=0):
+            self.assertFalse(ORGANIZER.looks_like_multi_file_book(files))
+
+    def test_low_chapter_count_named_m4b_parts_are_grouped(self):
+        files = [
+            Path("/book/Downtown Druid - Chapter 1.m4b"),
+            Path("/book/Downtown Druid - Chapter 2.m4b"),
+        ]
+
+        with patch.object(ORGANIZER, "read_file_chapter_count", return_value=1):
+            self.assertTrue(ORGANIZER.looks_like_multi_file_book(files))
+
+    def test_zero_padded_numeric_m4b_parts_are_grouped(self):
+        files = [
+            Path("/book/Example Book 3 - 01.m4b"),
+            Path("/book/Example Book 3 - 02.m4b"),
+            Path("/book/Example Book 3 - 03.m4b"),
+            Path("/book/Example Book 3.m4b"),
+        ]
+
+        def chapter_count(path):
+            return 30 if path.name == "Example Book 3.m4b" else 0
+
+        with patch.object(ORGANIZER, "read_file_chapter_count", side_effect=chapter_count):
+            self.assertTrue(ORGANIZER.looks_like_multi_file_book(files))
+
+    def test_different_numeric_m4b_prefixes_are_not_grouped(self):
+        files = [
+            Path("/book/Example Book 1 - 01.m4b"),
+            Path("/book/Example Book 2 - 02.m4b"),
+        ]
+
+        with patch.object(ORGANIZER, "read_file_chapter_count", return_value=0):
+            self.assertFalse(ORGANIZER.looks_like_multi_file_book(files))
+
+    def test_unreadable_m4a_chapter_metadata_is_not_grouped(self):
+        files = [Path("/book/Chapter 1.m4a"), Path("/book/Chapter 2.m4a")]
+
+        with patch.object(ORGANIZER, "read_file_chapter_count", return_value=None):
+            self.assertFalse(ORGANIZER.looks_like_multi_file_book(files))
+
+    def test_mp3_parts_do_not_require_chapter_probe(self):
+        files = [Path("/book/1.mp3"), Path("/book/2.mp3")]
+
+        with patch.object(ORGANIZER, "read_file_chapter_count") as chapter_probe:
+            self.assertTrue(ORGANIZER.looks_like_multi_file_book(files))
+            chapter_probe.assert_not_called()
+
+    def test_mixed_eligible_and_other_audio_formats_are_not_grouped(self):
+        files = [Path("/book/Chapter 1.m4a"), Path("/book/Chapter 2.flac")]
+
+        with patch.object(ORGANIZER, "read_file_chapter_count") as chapter_probe:
+            self.assertFalse(ORGANIZER.looks_like_multi_file_book(files))
+            chapter_probe.assert_not_called()
+
+
+class OrganizerLooseFilenameTests(unittest.TestCase):
+    def test_release_junk_uses_clean_series_and_volume_filename(self):
+        source = Path(
+            "/incoming/Reborn as a Space Mercenary, Vol. 5 - "
+            "vol_05 [2025] [ASIN.B012345678] [ENG].m4b"
+        )
+        target = Path(
+            "/library/Ryuto/Reborn as a Space Mercenary/Vol. 5"
+        )
+
+        self.assertEqual(
+            ORGANIZER.clean_loose_audio_filename(source, target),
+            "Reborn as a Space Mercenary - Vol. 5.m4b",
+        )
+
+    def test_clean_filename_is_preserved(self):
+        source = Path("/incoming/Bold Beginnings.m4b")
+        target = Path(
+            "/library/G.D. Brooks/Dashing Devil/Book 5 - Bold Beginnings"
+        )
+
+        self.assertEqual(
+            ORGANIZER.clean_loose_audio_filename(source, target),
+            source.name,
+        )
+
+
+if __name__ == "__main__":
+    unittest.main()

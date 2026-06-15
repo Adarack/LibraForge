@@ -1,0 +1,263 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>LibraForge - M4B Tool</title>
+  <script src="/static/ui-preferences.js?v=20260615-5"></script>
+  <link rel="stylesheet" href="/static/style.css?v=20260615-5" />
+  <link rel="icon" type="image/png" sizes="64x64" href="/static/favicon-64.png?v=20260613-3" />
+  <link rel="apple-touch-icon" sizes="180x180" href="/static/apple-touch-icon-180.png?v=20260613-3" />
+</head>
+<body data-page="m4b-tool">
+  <a class="skip-link" href="#main-content">Skip to content</a>
+  <main class="shell" id="main-content">
+    <header class="app-header">
+      <div class="brand">
+        <img class="app-logo" src="/app-icon.png?v=20260613-3" alt="" aria-hidden="true" />
+        <div class="header-copy">
+          <h1>LibraForge</h1>
+          <p class="brand-subtitle">Your Audiobookshelf companion tool to forge your library into shape.</p>
+        </div>
+      </div>
+      <div class="header-actions">
+        <button id="explanationsToggle" class="header-action" type="button" aria-pressed="false">Collapse explanations</button>
+        <button id="settingsToggle" class="icon-button" type="button" aria-label="Open global settings" aria-expanded="false" aria-controls="globalSettings">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M19.14 12.94c.04-.31.06-.63.06-.94s-.02-.63-.07-.94l2.03-1.58-1.92-3.32-2.39.96a7.2 7.2 0 0 0-1.63-.94L14.86 3h-3.84l-.36 3.18c-.58.24-1.12.55-1.63.94l-2.39-.96-1.92 3.32 2.03 1.58c-.05.31-.07.64-.07.94s.02.63.07.94l-2.03 1.58 1.92 3.32 2.39-.96c.5.39 1.05.7 1.63.94l.36 3.18h3.84l.36-3.18c.58-.24 1.13-.55 1.63-.94l2.39.96 1.92-3.32-2.02-1.58ZM12.94 15.5a3.5 3.5 0 1 1 0-7 3.5 3.5 0 0 1 0 7Z"/></svg>
+        </button>
+      </div>
+      <div id="globalSettings" class="settings-panel" hidden>
+        <div class="settings-panel-head">
+          <div><span class="eyebrow">Global preferences</span><h2>Settings</h2></div>
+          <button id="settingsClose" class="icon-button small" type="button" aria-label="Close global settings">×</button>
+        </div>
+        <div class="settings-grid">
+          <label class="preference-field">Appearance
+            <select id="uiTheme"><option value="system">System</option><option value="dark">Dark</option><option value="light">Light</option></select>
+          </label>
+          <label class="preference-field">Surface palette<select id="uiSurface"></select></label>
+          <label class="preference-field">Accent color
+            <select id="uiAccent"><option value="sky">Sky</option><option value="violet">Violet</option><option value="emerald">Emerald</option><option value="amber">Amber</option></select>
+          </label>
+          <label class="preference-field">Display density<select id="uiDensity"><option value="comfortable">Comfortable</option><option value="compact">Compact</option></select></label>
+        </div>
+        <section class="settings-section">
+          <h3>Title noise patterns</h3>
+          <p>Shared expressions prevent generic marketing text from becoming a book title or folder. Changes apply to both maintained scripts.</p>
+          <div id="titleNoiseDefaults" class="pattern-list"></div>
+          <div class="pattern-editor">
+            <label>Custom pattern label<input id="titleNoiseLabel" placeholder="Generic academy LitRPG subtitle" /></label>
+            <label>Regular expression<input id="titleNoisePattern" placeholder="(?:a|an)\s+.*\bacademy\s+litrpg\b" /></label>
+            <button id="titleNoiseAddBtn" class="secondary" type="button">Add pattern</button>
+          </div>
+          <div id="titleNoiseCustom" class="pattern-list"></div>
+          <div class="actions"><button id="titleNoiseSaveBtn" class="secondary" type="button">Save title patterns</button></div>
+          <p id="titleNoiseStatus" class="note"></p>
+        </section>
+      </div>
+    </header>
+
+    <nav class="forge-nav" aria-label="LibraForge tools">
+      <a class="forge-nav-item" href="/">
+        <span class="forge-nav-icon"><img src="/static/metadata-forge.png?v=20260615-1" alt="" aria-hidden="true" /></span>
+        <span class="forge-nav-copy">
+          <span class="eyebrow">Match, review, apply</span>
+          <strong>Metadata Forge</strong>
+          <small>Match Audible metadata, inspect results, and apply approved fixes.</small>
+        </span>
+      </a>
+      <a class="forge-nav-item active" href="/m4b-tool" aria-current="page">
+        <span class="forge-nav-icon"><img src="/static/m4b-forge-tool.png?v=20260615-1" alt="" aria-hidden="true" /></span>
+        <span class="forge-nav-copy">
+          <span class="eyebrow">Prepare, tag, merge</span>
+          <strong>M4B Tool</strong>
+          <small>Prepare metadata and merge source audio into a finished M4B.</small>
+        </span>
+      </a>
+      <a class="forge-nav-item" href="/organizer">
+        <span class="forge-nav-icon"><img src="/static/folder-forge.png?v=20260615-1" alt="" aria-hidden="true" /></span>
+        <span class="forge-nav-copy">
+          <span class="eyebrow">Plan, inspect, organize</span>
+          <strong>Folder Forge</strong>
+          <small>Preview and apply safe, metadata-driven library organization.</small>
+        </span>
+      </a>
+    </nav>
+
+    <section class="card">
+      <h2>Source</h2>
+      <div class="grid">
+        <label><span class="field-label">Folder or file <span class="info-tip" data-tooltip="Audio file or folder of chapter files to load, inspect, and merge into the output M4B."></span></span>
+          <input id="sourcePath" value="/audiobooks" />
+        </label>
+        <label><span class="field-label">Audible auth file <span class="info-tip" data-tooltip="Path inside the container to the unencrypted Audible authentication JSON used for manual catalog search."></span></span>
+          <input id="authFile" value="/auth/audible-metadata.json" />
+        </label>
+        <label><span class="field-label">Fixer search logic <span class="info-tip" data-tooltip="Selects which fixer script supplies title parsing, Audible search, scoring, and metadata normalization logic."></span></span>
+          <select id="searchScript"></select>
+        </label>
+      </div>
+      <div class="actions">
+        <button id="loadBtn">Load source</button>
+        <button id="saveBtn" class="secondary">Save sidecar</button>
+      </div>
+      <p class="action-explanation"><strong>Load source</strong> reads existing sidecar and audio properties without modifying files. <strong>Save sidecar</strong> stores the current metadata form so the conversion can be reproduced later.</p>
+      <p class="note" id="loadStatus">No sidecar loaded yet.</p>
+      <div class="audio-profile">
+        <div>
+          <span class="eyebrow">Loaded audio properties</span>
+          <p id="audioSummary" role="status" aria-live="polite">Audio: not loaded.</p>
+          <p id="audioRecommendation" class="audio-recommendation">Load a source to calculate a no-conversion recommendation.</p>
+        </div>
+        <p class="audio-profile-help"><strong>No conversion</strong> stream-copies compatible source audio into the M4B without changing codec, bitrate, sample rate, channels, or quality. It is fastest and avoids generational loss, but is recommended only when every source is AAC with matching sample rate and channel layout. Mixed bitrate alone is acceptable. Non-AAC or inconsistent sources should be converted for reliable M4B playback.</p>
+      </div>
+    </section>
+
+    <section class="card">
+      <h2>Find Books To Convert</h2>
+      <p class="note">Uses the selected fixer's existing processing and multipart safety rules. Discovery is read-only, does not inspect Audible metadata, and one inventory supplies both result views. It also caches codec, container, bitrate, sample-rate, and channel probes so each result can show whether No conversion is appropriate.</p>
+      <div class="path-controls">
+        <label><span class="field-label">Discovery root <span class="info-tip" data-tooltip="Library folder to scan for conversion candidates. Results are grouped using the selected fixer's trusted processing rules."></span></span>
+          <input id="discoveryRoot" value="/audiobooks" />
+        </label>
+        <button id="findMultipartBtn" class="secondary">Find multipart books</button>
+        <button id="findNonM4bBtn" class="secondary">Find non-M4B books</button>
+        <button id="refreshDiscoveryBtn" class="secondary">Refresh search</button>
+        <button id="refreshAudioProfilesBtn" class="secondary" disabled>Update multipart sidecars</button>
+      </div>
+      <p class="action-explanation"><strong>Find</strong> loads the persistent saved inventory without scanning when one is available. <strong>Refresh search</strong> walks the selected root and probes only new or changed files. <strong>Update multipart sidecars</strong> stores cached all-file audio profiles without changing audio or contacting Audible.</p>
+      <p id="discoveryMeta" class="note">No discovery scan run yet.</p>
+      <div id="discoveryResults" class="file-list"></div>
+    </section>
+
+    <section class="card">
+      <h2>Audible Search</h2>
+      <div class="search-row">
+        <input id="searchQuery" placeholder="Search title, author, series..." />
+        <button id="searchBtn">Search Audible metadata</button>
+      </div>
+      <p class="action-explanation">This optional search fills the metadata form from a selected Audible result. It does not start conversion or write to the source.</p>
+      <div id="searchMeta" class="note"></div>
+      <div id="searchResults" class="results-grid"></div>
+    </section>
+
+    <section class="card">
+      <h2>Editable Metadata</h2>
+      <div class="grid">
+        <label>Title
+          <input id="title" />
+        </label>
+        <label>Subtitle
+          <input id="subtitle" />
+        </label>
+        <label>Author
+          <input id="author" />
+        </label>
+        <label>Narrator
+          <input id="narrator" />
+        </label>
+        <label>Series
+          <input id="series" />
+        </label>
+        <label>Sequence
+          <input id="sequence" />
+        </label>
+        <label>Year
+          <input id="year" />
+        </label>
+        <label>ASIN
+          <input id="asin" />
+        </label>
+        <label>Cover URL
+          <input id="coverUrl" />
+        </label>
+      </div>
+      <label class="wide">Summary
+        <textarea id="summary" rows="5"></textarea>
+      </label>
+    </section>
+
+    <section class="card">
+      <h2>Merge Settings</h2>
+      <div class="grid">
+        <label><span class="field-label">Output `.m4b` <span class="info-tip" data-tooltip="Full destination path for the merged audiobook. Existing output is replaced only when Force overwrite is enabled."></span></span>
+          <input id="outputPath" />
+        </label>
+        <label><span class="field-label">Sidecar path <span class="info-tip" data-tooltip="JSON metadata sidecar loaded or saved for this conversion. It stores editable metadata separately from the audio."></span></span>
+          <input id="sidecarPath" />
+        </label>
+        <label><span class="field-label">Jobs <span class="info-tip" data-tooltip="Runs this many conversion commands simultaneously. For this server's 6-core/12-thread i5-10500, use 4 for normal operation, 6 only when the server can be dedicated to conversion, or 1-2 to minimize impact on other services. Values above 6 usually add disk contention without useful speed. 0 uses m4b-tool's conservative default of 1."></span></span>
+          <input id="jobs" type="number" min="0" max="12" value="4" />
+        </label>
+        <label><span class="field-label">Audio codec <span class="info-tip" data-tooltip="Encoder used when conversion is enabled. FDK AAC is the recommended quality and compatibility option."></span></span>
+          <select id="audioCodec">
+            <option value="libfdk_aac" selected>FDK AAC (recommended)</option>
+            <option value="aac">FFmpeg AAC</option>
+          </select>
+        </label>
+        <label><span class="field-label">Audio bitrate <span class="info-tip" data-tooltip="Target audio bitrate. Higher values increase quality and output size; 128 kbps is the default."></span></span>
+          <select id="audioBitrate">
+            <option value="64k">64 kbps</option>
+            <option value="80k">80 kbps</option>
+            <option value="96k">96 kbps</option>
+            <option value="128k" selected>128 kbps</option>
+            <option value="160k">160 kbps</option>
+            <option value="192k">192 kbps</option>
+          </select>
+        </label>
+        <label><span class="field-label">Sample rate <span class="info-tip" data-tooltip="Target sampling frequency when converting. 44.1 kHz is the default; avoid unnecessary upsampling."></span></span>
+          <select id="audioSamplerate">
+            <option value="22050">22.05 kHz</option>
+            <option value="32000">32 kHz</option>
+            <option value="44100" selected>44.1 kHz</option>
+            <option value="48000">48 kHz</option>
+          </select>
+        </label>
+        <label><span class="field-label">Channels <span class="info-tip" data-tooltip="Preserve source channels or force mono/stereo. Preserving the source avoids unnecessary channel conversion."></span></span>
+          <select id="audioChannels">
+            <option value="" selected>Preserve source</option>
+            <option value="1">Mono</option>
+            <option value="2">Stereo</option>
+          </select>
+        </label>
+      </div>
+      <div class="checks">
+        <label><input id="saveSidecar" type="checkbox" checked /> Save sidecar before run <span class="info-tip" data-tooltip="Writes the current metadata form to the sidecar before starting m4b-tool, keeping conversion metadata reproducible."></span></label>
+        <label><input id="force" type="checkbox" checked /> Force overwrite <span class="info-tip" data-tooltip="Allows m4b-tool to replace an existing output file at the selected destination. Disable it to protect existing output."></span></label>
+        <label><input id="noConversion" type="checkbox" /> No conversion <span class="info-tip" data-tooltip="Stream-copies the existing audio without changing codec, bitrate, sample rate, channels, or quality. Use it when the loaded profile recommends it; encoding controls are ignored."></span></label>
+        <label><input id="useFilenamesAsChapters" type="checkbox" /> Use filenames as chapters <span class="info-tip" data-tooltip="Uses source filenames as chapter names instead of relying only on embedded chapters or silence detection."></span></label>
+      </div>
+      <div class="card inset-card">
+        <h2>Command Preview</h2>
+        <p class="note">Shows the effective merge command before execution so encoding and overwrite choices can be reviewed.</p>
+        <pre id="commandPreview" class="command-preview"></pre>
+      </div>
+      <div class="actions">
+        <button id="startBtn">Create M4B</button>
+        <button id="cancelBtn" class="secondary" disabled>Cancel</button>
+      </div>
+      <p class="action-explanation"><strong>Create M4B</strong> writes a new output file using the command above. Source audio is read, not replaced; an existing output can be replaced only when Force overwrite is enabled.</p>
+    </section>
+
+    <section class="card status-card">
+      <div class="progress-wrap">
+        <div class="ring" id="ring" style="--pct: 0"><span id="percent">0%</span></div>
+        <div>
+          <h2 id="runStatus">Idle</h2>
+          <p id="currentFile">No run yet.</p>
+          <p id="chapterResult" class="note"></p>
+          <p id="command" class="mono"></p>
+          <div id="downloadLinks"></div>
+        </div>
+      </div>
+    </section>
+
+    <section class="card">
+      <h2>Live Output</h2>
+      <pre id="tail"></pre>
+    </section>
+  </main>
+  <script src="/static/ui-common.js?v=20260613-1"></script>
+  <script src="/static/m4b-tool.js?v=20260613-9"></script>
+</body>
+</html>

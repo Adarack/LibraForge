@@ -1,0 +1,35 @@
+services:
+  libraforge:
+    build: .
+    container_name: libraforge
+    user: "${UID}:${GID}"
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:5056:5056"
+    environment:
+      - SCRIPTS_DIR=/app/scripts
+      - REPORTS_DIR=/app/reports
+      - AUDIOBOOKS_ROOT=/audiobooks
+    volumes:
+      # UI/backend app code bind-mounted for faster iteration during development.
+      - ./app:/app/app
+      # Maintained fixer and organizer scripts exposed by the UI.
+      - ./scripts:/app/scripts
+      # Shared title-noise defaults and local UI-managed overrides.
+      - ./config:/app/config
+      # Completed log/report files are written here and exposed for download.
+      - ./reports:/app/reports
+      # Your audiobook library. Change left side if needed.
+      - ${AUDIOBOOKS_PATH}:/audiobooks
+      # Audible auth files. Recommended: unencrypted dummy metadata-only account.
+      - ${AUDIBLE_AUTH_PATH}:/auth:ro
+    healthcheck:
+      test:
+        - CMD
+        - python3
+        - -c
+        - "import urllib.request; urllib.request.urlopen('http://127.0.0.1:5056/health', timeout=3)"
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s

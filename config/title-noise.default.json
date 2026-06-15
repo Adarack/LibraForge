@@ -1,0 +1,17 @@
+{
+  "schema_version": 1,
+  "patterns": [
+    {
+      "id": "generic-genre-marketing-subtitle",
+      "label": "Generic genre marketing subtitle",
+      "description": "Matches article-led subtitles such as 'A Humorous Isekai LitRPG' or 'A Xianxia Progression Fantasy'.",
+      "pattern": "(?:a|an)\\s+(?=.{0,90}$)(?=.*\\b(?:lit\\s*rpg|litrpg|game\\s*lit|gamelit|fantasy|xianxia|wuxia|cultivation|isekai|harem|romantasy|sci[\\s-]*fi|science\\s+fiction)\\b)[a-z0-9][a-z0-9'\\s-]*"
+    },
+    {
+      "id": "genre-adventure-epic-suffix",
+      "label": "Genre adventure or epic suffix",
+      "description": "Matches common phrases such as 'A LitRPG Adventure', 'An Isekai Epic', or 'A Progression Fantasy Epic'.",
+      "pattern": "(?:(?:a|an)\\s+(?:cozy\\s+)?(?:(?:progression|epic|dark|urban|portal)\\s+)?(?:(?:lit\\s*rpg|gamelit|isekai|fantasy|sci[\\s-]*fi|harem)\\s+)(?:adventure|epic|novel|saga|story)|(?:a|an)\\s+(?:progression\\s+)?(?:lit\\s*rpg|fantasy)\\s+epic)"
+    }
+  ]
+}

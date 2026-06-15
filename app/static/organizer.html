@@ -1,0 +1,191 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>LibraForge - Folder Forge</title>
+  <script src="/static/ui-preferences.js?v=20260615-5"></script>
+  <link rel="stylesheet" href="/static/style.css?v=20260615-5" />
+  <link rel="icon" type="image/png" sizes="64x64" href="/static/favicon-64.png?v=20260613-3" />
+  <link rel="apple-touch-icon" sizes="180x180" href="/static/apple-touch-icon-180.png?v=20260613-3" />
+</head>
+<body data-page="organizer">
+  <a class="skip-link" href="#main-content">Skip to content</a>
+  <main class="shell" id="main-content">
+    <header class="app-header">
+      <div class="brand">
+        <img class="app-logo" src="/app-icon.png?v=20260613-3" alt="" aria-hidden="true" />
+        <div class="header-copy">
+          <h1>LibraForge</h1>
+          <p class="brand-subtitle">Your Audiobookshelf companion tool to forge your library into shape.</p>
+        </div>
+      </div>
+      <div class="header-actions">
+        <button id="explanationsToggle" class="header-action" type="button" aria-pressed="false">Collapse explanations</button>
+        <button id="settingsToggle" class="icon-button" type="button" aria-label="Open global settings" aria-expanded="false" aria-controls="globalSettings">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M19.14 12.94c.04-.31.06-.63.06-.94s-.02-.63-.07-.94l2.03-1.58-1.92-3.32-2.39.96a7.2 7.2 0 0 0-1.63-.94L14.86 3h-3.84l-.36 3.18c-.58.24-1.12.55-1.63.94l-2.39-.96-1.92 3.32 2.03 1.58c-.05.31-.07.64-.07.94s.02.63.07.94l-2.03 1.58 1.92 3.32 2.39-.96c.5.39 1.05.7 1.63.94l.36 3.18h3.84l.36-3.18c.58-.24 1.13-.55 1.63-.94l2.39.96 1.92-3.32-2.02-1.58ZM12.94 15.5a3.5 3.5 0 1 1 0-7 3.5 3.5 0 0 1 0 7Z"/></svg>
+        </button>
+      </div>
+      <div id="globalSettings" class="settings-panel" hidden>
+        <div class="settings-panel-head">
+          <div><span class="eyebrow">Global preferences</span><h2>Settings</h2></div>
+          <button id="settingsClose" class="icon-button small" type="button" aria-label="Close global settings">×</button>
+        </div>
+        <div class="settings-grid">
+          <label class="preference-field">Appearance
+            <select id="uiTheme"><option value="system">System</option><option value="dark">Dark</option><option value="light">Light</option></select>
+          </label>
+          <label class="preference-field">Surface palette<select id="uiSurface"></select></label>
+          <label class="preference-field">Accent color
+            <select id="uiAccent"><option value="sky">Sky</option><option value="violet">Violet</option><option value="emerald">Emerald</option><option value="amber">Amber</option></select>
+          </label>
+          <label class="preference-field">Display density<select id="uiDensity"><option value="comfortable">Comfortable</option><option value="compact">Compact</option></select></label>
+        </div>
+        <section class="settings-section">
+          <h3>Title noise patterns</h3>
+          <p>Shared expressions prevent generic marketing text from becoming a book title or folder. Changes apply to both maintained scripts.</p>
+          <div id="titleNoiseDefaults" class="pattern-list"></div>
+          <div class="pattern-editor">
+            <label>Custom pattern label<input id="titleNoiseLabel" placeholder="Generic academy LitRPG subtitle" /></label>
+            <label>Regular expression<input id="titleNoisePattern" placeholder="(?:a|an)\s+.*\bacademy\s+litrpg\b" /></label>
+            <button id="titleNoiseAddBtn" class="secondary" type="button">Add pattern</button>
+          </div>
+          <div id="titleNoiseCustom" class="pattern-list"></div>
+          <div class="actions"><button id="titleNoiseSaveBtn" class="secondary" type="button">Save title patterns</button></div>
+          <p id="titleNoiseStatus" class="note"></p>
+        </section>
+      </div>
+    </header>
+
+    <nav class="forge-nav" aria-label="LibraForge tools">
+      <a class="forge-nav-item" href="/">
+        <span class="forge-nav-icon"><img src="/static/metadata-forge.png?v=20260615-1" alt="" aria-hidden="true" /></span>
+        <span class="forge-nav-copy">
+          <span class="eyebrow">Match, review, apply</span>
+          <strong>Metadata Forge</strong>
+          <small>Match Audible metadata, inspect results, and apply approved fixes.</small>
+        </span>
+      </a>
+      <a class="forge-nav-item" href="/m4b-tool">
+        <span class="forge-nav-icon"><img src="/static/m4b-forge-tool.png?v=20260615-1" alt="" aria-hidden="true" /></span>
+        <span class="forge-nav-copy">
+          <span class="eyebrow">Prepare, tag, merge</span>
+          <strong>M4B Tool</strong>
+          <small>Prepare metadata and merge source audio into a finished M4B.</small>
+        </span>
+      </a>
+      <a class="forge-nav-item active" href="/organizer" aria-current="page">
+        <span class="forge-nav-icon"><img src="/static/folder-forge.png?v=20260615-1" alt="" aria-hidden="true" /></span>
+        <span class="forge-nav-copy">
+          <span class="eyebrow">Plan, inspect, organize</span>
+          <strong>Folder Forge</strong>
+          <small>Preview and apply safe, metadata-driven library organization.</small>
+        </span>
+      </a>
+    </nav>
+
+    <section class="card">
+      <h2>Run Settings</h2>
+      <div class="grid">
+        <label><span class="field-label">Organizer script <span class="info-tip" data-tooltip="Selects the organizer implementation used to inspect metadata and plan destination paths."></span></span>
+          <select id="script"></select>
+        </label>
+        <label><span class="field-label">Scan root <span class="info-tip" data-tooltip="Folder containing books to inspect. The normal import workflow scans /audiobooks/_unorganized."></span></span>
+          <input id="rootPath" value="/audiobooks/_unorganized" />
+        </label>
+        <label><span class="field-label">Destination library root <span class="info-tip" data-tooltip="Library root under which author, series, and book destination folders are planned or created."></span></span>
+          <input id="destinationRoot" value="/audiobooks" />
+        </label>
+        <label><span class="field-label">Max items, 0 means all <span class="info-tip" data-tooltip="Limits the number of organizer items inspected. Use a small value for testing; 0 includes all discovered items."></span></span>
+          <input id="maxItems" type="number" value="0" />
+        </label>
+        <label><span class="field-label">Progress every N items, 0 disables <span class="info-tip" data-tooltip="Controls how often the script prints scan and cache progress. Smaller values give more frequent UI updates."></span></span>
+          <input id="progressEvery" type="number" value="25" />
+        </label>
+      </div>
+
+      <div class="checks">
+        <label class="danger-check"><input id="apply" type="checkbox" /> Apply moves <span class="info-tip" data-tooltip="Moves folders and files to the planned destinations. Leave disabled to preview without changing the library."></span></label>
+        <label><input id="m4bOnly" type="checkbox" /> Only process `.m4b` items <span class="info-tip" data-tooltip="Excludes other supported formats and grouped chapter folders unless every audio file is M4B."></span></label>
+        <label><input id="includeExisting" type="checkbox" /> Include existing book folders <span class="info-tip" data-tooltip="Includes folders that look already organized instead of skipping them as likely existing books."></span></label>
+        <label><input id="noCompanions" type="checkbox" /> Ignore companion files for loose books <span class="info-tip" data-tooltip="Moves only the loose audio file and leaves matching marker, sidecar, image, and metadata companion files behind."></span></label>
+        <label><input id="allowUnknownAuthor" type="checkbox" /> Allow moves with unknown author <span class="info-tip" data-tooltip="Permits destinations under Unknown Author. Disabled by default because missing author metadata often indicates an unsafe plan."></span></label>
+        <label><input id="removeEmptyDirs" type="checkbox" /> Remove empty source directories after apply <span class="info-tip" data-tooltip="After successful moves, removes empty parent folders up to the scan root. Non-empty folders are preserved."></span></label>
+        <label><input id="rebuildStructureCache" type="checkbox" /> Refresh cache before this run <span class="info-tip" data-tooltip="First rescans the destination library and replaces the saved structure cache, then continues with this organizer preview or apply run. Use after manual library changes when you also want to organize books now."></span></label>
+        <label><input id="indexOnly" type="checkbox" /> Index library and exit <span class="info-tip" data-tooltip="Rescans the destination library, writes a fresh structure cache, and exits without planning or applying moves. Use for initial setup or a standalone cache refresh."></span></label>
+        <label><input id="consolidateStructures" type="checkbox" /> Consolidate existing series folders, full-root dry run recommended <span class="info-tip" data-tooltip="Plans parent-folder consolidation across the existing library while preserving book folder names. Run against the full root in dry-run mode first."></span></label>
+      </div>
+
+      <div class="actions">
+        <button id="startBtn">Start organizer run</button>
+        <button id="cancelBtn" class="secondary" disabled>Cancel</button>
+      </div>
+      <p class="action-explanation"><strong>Start organizer run</strong> previews destinations unless Apply moves is enabled. Index-only refreshes the cache and stops before move planning; consolidation should always be reviewed as a full-root dry run first.</p>
+
+      <div class="workflow-guide" aria-label="Library structure cache workflow">
+        <div class="workflow-guide-intro">
+          <span class="eyebrow">Why the structure cache matters</span>
+          <h3>It teaches the organizer how your library is already arranged</h3>
+          <p>The cache is a saved map of existing author and series locations under the <strong>destination library root</strong>. Normal imports consult it so a new volume joins the established series folder instead of creating a parallel structure. It caches folder structure, not Audible searches or editable book metadata.</p>
+        </div>
+        <div class="workflow-step">
+          <strong>Initial setup or standalone refresh</strong>
+          <p>Enable <strong>Index library and exit</strong>. The organizer scans the destination library, replaces the saved cache, and stops without planning or moving books.</p>
+        </div>
+        <div class="workflow-step">
+          <strong>Normal import</strong>
+          <p>Leave both cache options disabled. The organizer loads the saved cache and uses it while planning books from the scan root. If no cache exists yet, one is built automatically.</p>
+        </div>
+        <div class="workflow-step">
+          <strong>Library changed outside the organizer</strong>
+          <p>Use <strong>Refresh cache before this run</strong> when folders were manually renamed, moved, or added and you want a fresh scan followed immediately by a normal preview or apply run.</p>
+        </div>
+        <div class="workflow-step">
+          <strong>After an applied organizer run</strong>
+          <p>The organizer refreshes the cache automatically after successful moves, so a separate index run is normally unnecessary.</p>
+        </div>
+      </div>
+
+      <p class="note">For consolidation, set both roots to `/audiobooks`, enable consolidation, and run without Apply first.</p>
+    </section>
+
+    <section class="card status-card">
+      <div class="progress-wrap">
+        <div class="ring" id="ring" style="--pct: 0"><span id="percent">0%</span></div>
+        <div>
+          <h2 id="runStatus">Idle</h2>
+          <p id="currentFile">No run yet.</p>
+          <p id="command" class="mono"></p>
+          <div id="downloadLinks"></div>
+        </div>
+      </div>
+    </section>
+
+    <section class="card">
+      <h2>Summary</h2>
+      <div id="stats" class="stats-grid"></div>
+    </section>
+
+    <section class="card">
+      <h2>Planned Moves</h2>
+      <p class="note">Each card represents one move from the scan root into the destination library root.</p>
+      <div id="moveRiskSummary" class="review-alert">No move data yet.</div>
+      <div class="move-toolbar">
+        <label>Search moves
+          <input id="moveSearch" type="search" placeholder="Title, author, series, source, or destination" />
+        </label>
+        <label class="review-toggle"><input id="reviewOnly" type="checkbox" /> Show review items only</label>
+        <strong id="moveCount">Showing 0 of 0 planned moves</strong>
+      </div>
+      <div id="moveItems" class="results-grid"></div>
+    </section>
+
+    <section class="card">
+      <h2>Live Output</h2>
+      <pre id="tail"></pre>
+    </section>
+  </main>
+  <script src="/static/ui-common.js?v=20260613-1"></script>
+  <script src="/static/organizer.js?v=20260615-3"></script>
+</body>
+</html>
