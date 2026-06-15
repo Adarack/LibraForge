@@ -258,3 +258,6 @@ by the included development-oriented Compose file.
 The maintained public scripts are fixer v4.15 and organizer v3.7. Experimental
 fixer v5 files are excluded from Git and Docker builds until their concurrency
 behavior is stable.
+
+See [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md) for the shipped dependency
+license summary.
