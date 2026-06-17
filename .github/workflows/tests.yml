@@ -10,6 +10,9 @@ permissions:
 jobs:
   test:
     runs-on: ubuntu-latest
+    env:
+      SCRIPTS_DIR: ${{ github.workspace }}/scripts
+      REPORTS_DIR: ${{ runner.temp }}/libraforge-reports
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
