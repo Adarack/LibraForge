@@ -3,6 +3,7 @@
 import argparse
 import contextlib
 import getpass
+import os
 import html
 import io
 import json
@@ -3998,6 +3999,60 @@ def audible_lookup_by_asin(client: audible.Client, asin: str) -> dict | None:
         return None
 
 
+def abs_search(title: str, author: str, provider: str, abs_url: str, abs_api_key: str, limit: int) -> list[dict]:
+    """Search Audiobookshelf's metadata API and return results normalised to Audible product shape."""
+    import urllib.error as _urlerror
+    import urllib.parse as _urlparse
+    import urllib.request as _urlrequest
+
+    params: dict[str, str] = {"title": title, "provider": provider}
+    if author:
+        params["author"] = author
+    url = f"{abs_url.rstrip('/')}/api/search/books?{_urlparse.urlencode(params)}"
+    req = _urlrequest.Request(url, headers={"Authorization": f"Bearer {abs_api_key}", "Accept": "application/json"})
+    try:
+        with _urlrequest.urlopen(req, timeout=15) as resp:
+            raw = json.loads(resp.read().decode("utf-8"))
+    except (_urlerror.URLError, OSError) as exc:
+        print(f"  WARNING: ABS search failed: {exc}")
+        return []
+    except Exception as exc:
+        print(f"  WARNING: ABS search error: {exc}")
+        return []
+
+    products = []
+    for match in (raw if isinstance(raw, list) else [])[:limit]:
+        series_raw = match.get("series") or []
+        if isinstance(series_raw, list) and series_raw:
+            series_name = series_raw[0].get("series", "")
+            sequence = str(series_raw[0].get("sequence", "") or "")
+        elif isinstance(series_raw, str):
+            series_name, sequence = series_raw, ""
+        else:
+            series_name, sequence = "", ""
+
+        duration_min = match.get("duration")
+        duration_sec = round(float(duration_min) * 60) if duration_min else None
+
+        # Normalise to Audible product shape so existing scoring/metadata functions work unchanged.
+        products.append({
+            "asin": match.get("asin", ""),
+            "title": match.get("title", "") or "",
+            "subtitle": match.get("subtitle", "") or "",
+            "authors": [{"name": match.get("author", "") or ""}],
+            "narrators": [{"name": match.get("narrator", "") or ""}],
+            "series": [{"title": series_name, "sequence": sequence}] if series_name else [],
+            "publisher_summary": match.get("description", "") or "",
+            "product_images": {"500": match.get("cover", "") or ""},
+            "runtime_length_min": duration_min,
+            "runtime_length_sec": duration_sec,
+            "release_date": str(match.get("publishedYear", "") or ""),
+            "_abs_provider": provider,
+            "_abs_isbn": match.get("isbn", "") or "",
+        })
+    return products
+
+
 _thread_local = threading.local()
 
 
@@ -4150,30 +4205,67 @@ def search_item(
             product = None
             score = 0.0
             used_query = ""
-            client = get_thread_client(auth_file, auth_password)
 
-            # ASIN-first: if the file already embeds an ASIN, attempt a direct
-            # product lookup before falling back to keyword searches.
-            existing_asin = clues.get("existing_asin", "")
-            if existing_asin:
-                log.append(f"  Trying ASIN direct lookup: {existing_asin}")
-                asin_product = audible_lookup_by_asin(client, existing_asin)
-                if asin_product:
-                    asin_candidate_score = score_product_for_metadata(
-                        clues, asin_product, local_duration_minutes
-                    )
-                    asin_debug = metadata_from_product(asin_product, clues, asin_candidate_score)
-                    log.append(
-                        f"  ASIN lookup: score={asin_candidate_score} "
-                        f"title={asin_debug.get('audible_title')} "
-                        f"mode={asin_debug.get('edit_mode')}"
-                    )
-                    if asin_candidate_score >= args.min_score:
-                        product = asin_product
-                        score = asin_candidate_score
-                        used_query = f"ASIN:{existing_asin}"
+            use_abs = getattr(args, "provider", "audible") == "abs"
 
-            for query in queries:
+            if use_abs:
+                # ABS provider: keyword searches only (no per-ASIN direct lookup via ABS).
+                for query in queries:
+                    if product and score >= args.min_score:
+                        break
+                    log.append(f"  Trying ABS query ({args.abs_provider}): {query}")
+                    title_part, _, author_part = query.partition(" - ")
+                    query_products = abs_search(
+                        title=title_part.strip() or query,
+                        author=author_part.strip(),
+                        provider=args.abs_provider,
+                        abs_url=args.abs_url,
+                        abs_api_key=args.abs_api_key,
+                        limit=args.limit,
+                    )
+                    log.append(f"  Results: {len(query_products)}")
+                    if not query_products:
+                        continue
+                    candidate, candidate_score = pick_best_match_for_metadata(
+                        clues, query_products, local_duration_minutes,
+                    )
+                    if candidate:
+                        debug_metadata = metadata_from_product(candidate, clues, candidate_score)
+                        log.append(
+                            f"  Candidate: score={candidate_score} "
+                            f"title={debug_metadata.get('audible_title')} "
+                            f"mode={debug_metadata.get('edit_mode')} "
+                            f"asin={debug_metadata.get('asin')}"
+                        )
+                        if candidate_score > score:
+                            product = candidate
+                            score = candidate_score
+                            used_query = query
+            else:
+                client = get_thread_client(auth_file, auth_password)
+
+                # ASIN-first: if the file already embeds an ASIN, attempt a direct
+                # product lookup before falling back to keyword searches.
+                existing_asin = clues.get("existing_asin", "")
+                if existing_asin:
+                    log.append(f"  Trying ASIN direct lookup: {existing_asin}")
+                    asin_product = audible_lookup_by_asin(client, existing_asin)
+                    if asin_product:
+                        asin_candidate_score = score_product_for_metadata(
+                            clues, asin_product, local_duration_minutes
+                        )
+                        asin_debug = metadata_from_product(asin_product, clues, asin_candidate_score)
+                        log.append(
+                            f"  ASIN lookup: score={asin_candidate_score} "
+                            f"title={asin_debug.get('audible_title')} "
+                            f"mode={asin_debug.get('edit_mode')}"
+                        )
+                        if asin_candidate_score >= args.min_score:
+                            product = asin_product
+                            score = asin_candidate_score
+                            used_query = f"ASIN:{existing_asin}"
+
+            for query in queries if not use_abs else []:
                 if product and score >= args.min_score:
                     break
                 log.append(f"  Trying query: {query}")
@@ -6060,6 +6152,41 @@ def main():
             "instead of embedding tags in the audio file. The file is placed at "
             "<book-folder>/metadata.json and Audiobookshelf will pick it up automatically."
         ),
+    )
+
+    parser.add_argument(
+        "--provider",
+        choices=["audible", "abs"],
+        default="audible",
+        help=(
+            "Metadata search backend. audible (default): queries Audible directly using the auth file. "
+            "abs: queries your Audiobookshelf instance, which supports Audible and other providers "
+            "without requiring an Audible auth file."
+        ),
+    )
+
+    parser.add_argument(
+        "--abs-provider",
+        default="audible",
+        dest="abs_provider",
+        help=(
+            "Provider to use when --provider=abs. Matches the ABS provider slug "
+            "(e.g. audible, audible.uk, google, itunes, openlibrary). Default: audible."
+        ),
+    )
+
+    parser.add_argument(
+        "--abs-url",
+        default=os.environ.get("ABS_URL", "http://audiobookshelf"),
+        dest="abs_url",
+        help="Base URL of the Audiobookshelf instance. Defaults to ABS_URL env var or http://audiobookshelf.",
+    )
+
+    parser.add_argument(
+        "--abs-api-key",
+        default=os.environ.get("ABS_API_KEY", ""),
+        dest="abs_api_key",
+        help="Audiobookshelf API key. Defaults to ABS_API_KEY env var.",
     )
 
     parser.add_argument(

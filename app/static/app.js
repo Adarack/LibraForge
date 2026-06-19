@@ -5,7 +5,7 @@ let manualContext = null;
 let manualCurrentCoverUrl = '';
 
 const $ = (id) => document.getElementById(id);
-const { escapeHtml, renderDownloadLinks, statCard: stat, loadAbsAggProviders, loadAbsAggSettings, saveAbsAggUrl, searchAbsAgg, scoreBadge } = window.UiCommon;
+const { escapeHtml, renderDownloadLinks, statCard: stat, loadAbsAggProviders, getAbsAggProviderParamHint, isAbsAggReachable, loadAbsAggSettings, saveAbsAggUrl, searchAbsAgg, scoreBadge } = window.UiCommon;
 
 function fixerMajorVersion(scriptName) {
   const m = scriptName.match(/-v(\d+)/i);
@@ -52,6 +52,8 @@ function collectRequest() {
     workers: fixerMajorVersion($('script').value) >= 5 ? parseInt($('workers').value || '1', 10) : undefined,
     api_delay_ms: fixerMajorVersion($('script').value) >= 5 ? parseInt($('apiDelayMs').value || '0', 10) : 0,
     write_mode: fixerMajorVersion($('script').value) >= 5 ? ($('writeMode').value || 'smart') : 'smart',
+    provider: fixerMajorVersion($('script').value) >= 5 ? ($('batchProvider')?.value || 'audible') : 'audible',
+    abs_provider: fixerMajorVersion($('script').value) >= 5 ? ($('batchAbsProvider')?.value || 'audible') : 'audible',
     min_score: parseFloat($('minScore').value || '0.7'),
     limit: parseInt($('limit').value || '50', 10),
     max_files: parseInt($('maxFiles').value || '0', 10),
@@ -469,7 +471,18 @@ async function searchManualTarget() {
   const provider = $('manualProvider').value;
   let res;
 
-  if (provider === 'abs-agg') {
+  if (provider === 'abs') {
+    const absRes = await fetch('/api/abs/search', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        query: $('manualQuery').value.trim(),
+        provider: $('manualAbsProvider').value || 'audible',
+        limit: 10,
+      }),
+    });
+    res = await absRes.json();
+  } else if (provider === 'abs-agg') {
     res = await searchAbsAgg({
       query: $('manualQuery').value.trim(),
       provider: $('manualAbsAggProvider').value,
@@ -546,19 +559,67 @@ $("manualBrowseBtn").addEventListener("click", () => browseManualPath());
 $("manualReloadCoverBtn").addEventListener("click", loadManualCurrentCover);
 loadScripts();
 
-// Provider selector for manual review
+// Provider selectors for manual review and batch runs
 (async () => {
+  // Load abs-agg providers
   await loadAbsAggProviders($('manualAbsAggProvider'));
   const settings = await loadAbsAggSettings();
   if (settings.url) $('manualAbsAggUrl').value = settings.url;
 
-  function toggleManualAbsAggFields() {
-    const isAbsAgg = $('manualProvider').value === 'abs-agg';
+  // Load ABS providers for manual review and batch
+  async function loadAbsProviders(selectEl) {
+    try {
+      const res = await fetch('/api/abs/providers');
+      const data = await res.json();
+      selectEl.innerHTML = '';
+      Object.entries(data.providers || {}).forEach(([value, text]) => {
+        const opt = document.createElement('option');
+        opt.value = value;
+        opt.textContent = text;
+        if (value === 'audible') opt.selected = true;
+        selectEl.appendChild(opt);
+      });
+    } catch {}
+  }
+  await loadAbsProviders($('manualAbsProvider'));
+  if ($('batchAbsProvider')) await loadAbsProviders($('batchAbsProvider'));
+
+  function updateAbsAggParamHint(selectEl, paramsInputEl) {
+    const hint = getAbsAggProviderParamHint(selectEl.value);
+    if (hint) {
+      paramsInputEl.placeholder = hint.example;
+      paramsInputEl.title = `${hint.required ? 'Required' : 'Optional'}: ${hint.description}`;
+    } else {
+      paramsInputEl.placeholder = '';
+      paramsInputEl.title = '';
+    }
+  }
+
+  $('manualAbsAggProvider').addEventListener('change', () =>
+    updateAbsAggParamHint($('manualAbsAggProvider'), $('manualAbsAggParams'))
+  );
+  updateAbsAggParamHint($('manualAbsAggProvider'), $('manualAbsAggParams'));
+
+  function toggleManualProviderFields() {
+    const v = $('manualProvider').value;
+    $('manualAbsProviderLabel').hidden = v !== 'abs';
+    const isAbsAgg = v === 'abs-agg';
     ['manualAbsAggProviderLabel', 'manualAbsAggParamsLabel', 'manualAbsAggUrlLabel'].forEach(id => {
       $(id).hidden = !isAbsAgg;
     });
+    if ($('absAggWarning')) $('absAggWarning').hidden = !(isAbsAgg && !isAbsAggReachable());
   }
-  $('manualProvider').addEventListener('change', toggleManualAbsAggFields);
-  toggleManualAbsAggFields();
+  $('manualProvider').addEventListener('change', toggleManualProviderFields);
+  toggleManualProviderFields();
+
+  function toggleBatchProviderFields() {
+    if (!$('batchProvider')) return;
+    const isAbs = $('batchProvider').value === 'abs';
+    if ($('batchAbsProviderLabel')) $('batchAbsProviderLabel').hidden = !isAbs;
+  }
+  if ($('batchProvider')) {
+    $('batchProvider').addEventListener('change', toggleBatchProviderFields);
+    toggleBatchProviderFields();
+  }
   $('manualAbsAggUrl').addEventListener('change', () => saveAbsAggUrl($('manualAbsAggUrl').value.trim()));
 })();

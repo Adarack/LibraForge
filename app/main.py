@@ -59,19 +59,26 @@ M4B_DISCOVERY_CACHE_LOCK = threading.Lock()
 DEFAULT_AUTH_FILE = Path("/auth/audible-metadata.json")
 ABS_AGG_CONFIG_FILE = APP_ROOT.parent / "config" / "abs-agg.json"
 
-# abs-agg provider catalog (key = URL slug, value = display label)
-_ABS_AGG_PROVIDERS: dict[str, str] = {
-    "librivox":         "LibriVox",
-    "goodreads":        "Goodreads",
-    "storytel":         "Storytel",
-    "audioteka":        "Audioteka",
-    "bookbeat":         "BookBeat",
-    "bigfinish":        "Big Finish",
-    "graphicaudio":     "Graphic Audio",
-    "hardcover":        "Hardcover",
-    "soundbooththeatre": "Soundbooth Theatre",
-    "ard":              "ARD Audiothek",
-    "diedrei":          "Die drei ???",
+# Fallback provider catalog used when abs-agg is unreachable.
+# IDs must match the abs-agg URL slugs exactly (verified against /providers endpoint).
+_ABS_AGG_PROVIDERS_FALLBACK: dict[str, str] = {
+    "librivox":          "LibriVox",
+    "storytel":          "Storytel",
+    "audioteka":         "Audioteka",
+    "bookbeat":          "BookBeat",
+    "bigfinish":         "Big Finish",
+    "graphicaudio":      "Graphic Audio",
+    "soundbooththeater": "Soundbooth Theater",
+    "ardaudiothek":      "ARD Audiothek",
+    "dreifragezeichen":  "Die drei ???",
+}
+
+# Providers that require a path parameter — shown as a hint in the UI.
+# Format: provider_id -> (param_name, example_value, description)
+ABS_AGG_REQUIRED_PARAMS: dict[str, tuple[str, str, str]] = {
+    "storytel":  ("language", "en", "ISO language code, e.g. en, de, fr, sv, es"),
+    "audioteka": ("lang",     "pl", "Region code: pl, cz, de, sk, lt"),
+    "bookbeat":  ("market",   "germany", "Country name, e.g. germany, sweden, united-kingdom"),
 }
 
 
@@ -81,7 +88,7 @@ def _load_abs_agg_config() -> dict[str, Any]:
             return json.loads(ABS_AGG_CONFIG_FILE.read_text(encoding="utf-8"))
     except Exception:
         pass
-    return {"url": "http://localhost:3000"}
+    return {"url": "http://abs-agg:3000"}
 
 
 def _save_abs_agg_config(config: dict[str, Any]) -> None:
@@ -95,6 +102,7 @@ def _save_abs_agg_config(config: dict[str, Any]) -> None:
 def search_abs_agg_candidates(
     *,
     query: str,
+    author: str = "",
     base_url: str,
     provider: str,
     provider_params: str = "",
@@ -103,11 +111,13 @@ def search_abs_agg_candidates(
     import urllib.error as _urlerror
     import urllib.parse as _urlparse
 
-    if provider not in _ABS_AGG_PROVIDERS:
-        raise HTTPException(status_code=400, detail=f"Unknown abs-agg provider: {provider}")
-
+    # provider_params is the raw path value (e.g. "en" for Storytel, "pl" for Audioteka).
+    # It slots directly into the URL path: /{provider}/{params}/search
     params_segment = f"/{provider_params.strip('/')}" if provider_params.strip("/") else ""
-    qs = _urlparse.urlencode({"title": query, "limit": limit})
+    qs_dict: dict[str, Any] = {"title": query, "limit": limit}
+    if author:
+        qs_dict["author"] = author
+    qs = _urlparse.urlencode(qs_dict)
     search_url = f"{base_url.rstrip('/')}/{provider}{params_segment}/search?{qs}"
 
     try:
@@ -623,6 +633,8 @@ class RunRequest(BaseModel):
     workers: int | None = None
     api_delay_ms: int = 0
     write_mode: str = "smart"
+    provider: str = "audible"
+    abs_provider: str = "audible"
 
 
 class M4BMetadataForm(BaseModel):
@@ -1168,6 +1180,11 @@ def build_command(req: RunRequest) -> tuple[list[str], float]:
             cmd += ["--api-delay-ms", str(req.api_delay_ms)]
         if req.write_mode and req.write_mode != "smart":
             cmd += ["--write-mode", req.write_mode]
+        if req.provider == "abs":
+            cmd += ["--provider", "abs"]
+            cmd += ["--abs-provider", req.abs_provider]
+            cmd += ["--abs-url", _ABS_URL]
+            cmd += ["--abs-api-key", _ABS_API_KEY]
 
     return cmd, float(req.duration_review_threshold or 10.0)
 
@@ -3043,6 +3060,7 @@ class AbsAggSettingsRequest(BaseModel):
 
 class AbsAggSearchRequest(BaseModel):
     query: str
+    author: str = ""
     provider: str = "librivox"
     provider_params: str = ""
     limit: int = 10
@@ -3051,7 +3069,31 @@ class AbsAggSearchRequest(BaseModel):
 
 @app.get("/api/abs-agg/providers")
 def abs_agg_providers() -> dict[str, Any]:
-    return {"providers": _ABS_AGG_PROVIDERS}
+    base_url = _load_abs_agg_config().get("url", "http://abs-agg:3000")
+    providers: dict[str, str] = {}
+    reachable = False
+    try:
+        req = urllib.request.Request(
+            f"{base_url.rstrip('/')}/providers",
+            headers={"Accept": "application/json"},
+        )
+        with urllib.request.urlopen(req, timeout=5) as resp:
+            data = json.loads(resp.read().decode("utf-8"))
+        providers = {
+            p["id"]: p["name"]
+            for p in data.get("providers", [])
+            if p.get("available", True)
+        }
+        reachable = True
+    except Exception:
+        providers = _ABS_AGG_PROVIDERS_FALLBACK
+
+    return {
+        "providers": providers,
+        "required_params": ABS_AGG_REQUIRED_PARAMS,
+        "reachable": reachable,
+        "url": base_url,
+    }
 
 
 @app.get("/api/abs-agg/settings")
@@ -3076,9 +3118,147 @@ def abs_agg_search(req: AbsAggSearchRequest) -> dict[str, Any]:
         )
     return search_abs_agg_candidates(
         query=req.query,
+        author=req.author,
         base_url=base_url,
         provider=req.provider,
         provider_params=req.provider_params,
+        limit=req.limit,
+    )
+
+
+# ---------------------------------------------------------------------------
+# ABS (Audiobookshelf) metadata provider
+# ---------------------------------------------------------------------------
+
+_ABS_URL = os.environ.get("ABS_URL", "http://audiobookshelf").rstrip("/")
+_ABS_API_KEY = os.environ.get("ABS_API_KEY", "")
+
+
+def _abs_request(path: str, params: dict[str, str]) -> Any:
+    import urllib.error as _urlerror
+    import urllib.parse as _urlparse
+
+    if not _ABS_API_KEY:
+        raise HTTPException(status_code=503, detail="ABS_API_KEY not configured.")
+    qs = _urlparse.urlencode(params)
+    url = f"{_ABS_URL}{path}?{qs}"
+    req = urllib.request.Request(
+        url,
+        headers={"Authorization": f"Bearer {_ABS_API_KEY}", "Accept": "application/json"},
+    )
+    try:
+        with urllib.request.urlopen(req, timeout=15) as resp:
+            return json.loads(resp.read().decode("utf-8"))
+    except _urlerror.HTTPError as exc:
+        raise HTTPException(status_code=502, detail=f"ABS error {exc.code}: {exc.reason}") from exc
+    except _urlerror.URLError as exc:
+        raise HTTPException(status_code=502, detail=f"ABS unreachable: {exc}") from exc
+    except Exception as exc:
+        raise HTTPException(status_code=502, detail=f"ABS search failed: {exc}") from exc
+
+
+def search_abs_candidates(*, title: str, author: str = "", provider: str = "audible", limit: int = 10) -> dict[str, Any]:
+    params: dict[str, str] = {"title": title, "provider": provider}
+    if author:
+        params["author"] = author
+    raw = _abs_request("/api/search/books", params)
+    matches = raw if isinstance(raw, list) else []
+
+    results: list[dict[str, Any]] = []
+    for i, match in enumerate(matches[:limit]):
+        series_raw = match.get("series") or []
+        if isinstance(series_raw, list):
+            series_name = series_raw[0].get("series", "") if series_raw else ""
+            sequence = str(series_raw[0].get("sequence", "") or "") if series_raw else ""
+        elif isinstance(series_raw, str):
+            series_name = series_raw
+            sequence = ""
+        else:
+            series_name = ""
+            sequence = ""
+
+        title_val = match.get("title", "") or ""
+        subtitle = match.get("subtitle", "") or ""
+        author_val = match.get("author", "") or ""
+        narrator = match.get("narrator", "") or ""
+        year = str(match.get("publishedYear", "") or "")
+        cover_url = match.get("cover", "") or ""
+        summary = match.get("description", "") or ""
+        asin = match.get("asin", "") or f"abs-{provider}-{i}"
+        isbn = match.get("isbn", "") or ""
+        duration_minutes_raw = match.get("duration")
+        duration_minutes = round(float(duration_minutes_raw), 2) if duration_minutes_raw else None
+        region = match.get("region", "") or ""
+
+        full_meta = {
+            "title": title_val, "subtitle": subtitle, "author": author_val,
+            "narrator": narrator, "series": series_name, "sequence": sequence,
+            "year": year, "cover_url": cover_url, "asin": asin, "summary": summary,
+        }
+        series_only_meta = {
+            "title": "", "subtitle": "", "author": "", "narrator": "",
+            "series": series_name, "sequence": sequence,
+            "year": "", "cover_url": "", "asin": asin, "summary": "",
+        }
+        allowed_modes = ["full"] + (["series_only"] if series_name else [])
+
+        results.append({
+            "asin": asin,
+            "isbn": isbn,
+            "query": title,
+            "score": None,
+            "edit_mode": "full",
+            "recommended_edit_mode": "full",
+            "allowed_edit_modes": allowed_modes,
+            "title": title_val,
+            "subtitle": subtitle,
+            "authors": [author_val] if author_val else [],
+            "narrators": [narrator] if narrator else [],
+            "series": series_name,
+            "sequence": sequence,
+            "duration_minutes": duration_minutes,
+            "year": year,
+            "cover_url": cover_url,
+            "summary": summary,
+            "chosen_metadata": full_meta,
+            "chosen_metadata_by_mode": {"full": full_meta, "series_only": series_only_meta},
+            "duration": {},
+            "provider": "abs",
+            "abs_provider": provider,
+            "abs_region": region,
+        })
+
+    return {"queries": [title], "results": results}
+
+
+class AbsSearchRequest(BaseModel):
+    query: str
+    author: str = ""
+    provider: str = "audible"
+    limit: int = 10
+
+
+@app.get("/api/abs/providers")
+def abs_providers() -> dict[str, Any]:
+    try:
+        data = _abs_request("/api/search/providers", {})
+        return {"providers": {p["value"]: p["text"] for p in data.get("providers", {}).get("books", [])}}
+    except HTTPException:
+        # Return a minimal fallback so the UI stays functional if ABS is unreachable.
+        return {"providers": {"audible": "Audible.com", "google": "Google Books", "itunes": "iTunes", "openlibrary": "Open Library"}}
+
+
+@app.get("/api/abs/status")
+def abs_status() -> dict[str, Any]:
+    return {"configured": bool(_ABS_API_KEY), "url": _ABS_URL}
+
+
+@app.post("/api/abs/search")
+def abs_search(req: AbsSearchRequest) -> dict[str, Any]:
+    return search_abs_candidates(
+        title=req.query,
+        author=req.author,
+        provider=req.provider,
         limit=req.limit,
     )
 

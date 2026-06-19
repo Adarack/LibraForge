@@ -39,10 +39,15 @@
       });
   }
 
+  let _absAggRequiredParams = {};
+  let _absAggReachable = false;
+
   async function loadAbsAggProviders(selectEl) {
     try {
       const res = await fetch("/api/abs-agg/providers");
       const data = await res.json();
+      _absAggRequiredParams = data.required_params || {};
+      _absAggReachable = data.reachable === true;
       Object.entries(data.providers || {}).forEach(([key, label]) => {
         const opt = document.createElement("option");
         opt.value = key;
@@ -52,12 +57,23 @@
     } catch {}
   }
 
+  function isAbsAggReachable() {
+    return _absAggReachable;
+  }
+
+  function getAbsAggProviderParamHint(providerId) {
+    const info = _absAggRequiredParams[providerId];
+    if (!info) return null;
+    const [param, example, description] = info;
+    return { param, example, description, required: true };
+  }
+
   async function loadAbsAggSettings() {
     try {
       const res = await fetch("/api/abs-agg/settings");
       return await res.json();
     } catch {
-      return { url: "http://localhost:3000" };
+      return { url: "http://abs-agg:3000" };
     }
   }
 
@@ -97,6 +113,8 @@
     renderDownloadLinks,
     statCard,
     loadAbsAggProviders,
+    getAbsAggProviderParamHint,
+    isAbsAggReachable,
     loadAbsAggSettings,
     saveAbsAggUrl,
     searchAbsAgg,

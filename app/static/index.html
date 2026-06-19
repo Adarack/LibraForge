@@ -98,21 +98,26 @@
         <label><span class="field-label">Script <span class="info-tip" data-tooltip="Selects the metadata fixer implementation to run. The current recommended default is selected automatically."></span></span>
           <select id="script"></select>
         </label>
-        <label><span class="field-label">Metadata provider <span class="info-tip" data-tooltip="Selects the metadata source used for manual review searches. Batch runs always use Audible."></span></span>
+        <label><span class="field-label">Metadata provider <span class="info-tip" data-tooltip="Selects the metadata source. Audible: direct API, requires auth file. ABS: searches via your Audiobookshelf instance — no Audible auth needed, supports multiple providers. abs-agg: separate abs-agg service."></span></span>
           <select id="manualProvider">
-            <option value="audible">Audible</option>
+            <option value="audible">Audible (direct)</option>
+            <option value="abs">Audiobookshelf (ABS)</option>
             <option value="abs-agg">abs-agg</option>
           </select>
+        </label>
+        <label id="manualAbsProviderLabel" hidden><span class="field-label">ABS source <span class="info-tip" data-tooltip="The metadata provider ABS will query on your behalf. Audible.com is the default and most complete for audiobooks."></span></span>
+          <select id="manualAbsProvider"></select>
         </label>
         <label id="manualAbsAggProviderLabel" hidden><span class="field-label">abs-agg source</span>
           <select id="manualAbsAggProvider"></select>
         </label>
-        <label id="manualAbsAggParamsLabel" hidden><span class="field-label">Provider params <span class="info-tip" data-tooltip="Optional path parameters, e.g. 'language:en' for Storytel or 'market:germany' for BookBeat."></span></span>
-          <input id="manualAbsAggParams" placeholder="language:en" />
+        <label id="manualAbsAggParamsLabel" hidden><span class="field-label">Provider params <span class="info-tip" id="manualAbsAggParamsTip" data-tooltip="Some providers require a path parameter. Enter just the value — e.g. 'en' for Storytel, 'pl' for Audioteka, 'germany' for BookBeat."></span></span>
+          <input id="manualAbsAggParams" placeholder="en" />
         </label>
-        <label id="manualAbsAggUrlLabel" hidden><span class="field-label">abs-agg URL <span class="info-tip" data-tooltip="Base URL of your running abs-agg instance, e.g. http://localhost:3000"></span></span>
-          <input id="manualAbsAggUrl" placeholder="http://localhost:3000" />
+        <label id="manualAbsAggUrlLabel" hidden><span class="field-label">abs-agg URL <span class="info-tip" data-tooltip="Base URL of your abs-agg instance."></span></span>
+          <input id="manualAbsAggUrl" placeholder="http://abs-agg:3000" />
         </label>
+        <p id="absAggWarning" class="note" hidden style="color:var(--warning,#e8a020)">abs-agg is not reachable at the configured URL. Start the service or check the URL above.</p>
         <label><span class="field-label">Target path <span class="info-tip" data-tooltip="The audiobook file or folder to scan. Use a narrow path for testing before processing the full library."></span></span>
           <input id="targetPath" value="/audiobooks" />
         </label>
@@ -151,6 +156,15 @@
               <option value="fill-missing">Fill missing fields only</option>
               <option value="overwrite">Overwrite (always write all fields)</option>
             </select>
+          </label>
+          <label><span class="field-label">Batch provider <span class="info-tip" data-tooltip="Search backend for batch runs. Audible uses the auth file directly. ABS proxies through your Audiobookshelf instance — no Audible auth file needed."></span></span>
+            <select id="batchProvider">
+              <option value="audible">Audible (direct)</option>
+              <option value="abs">Audiobookshelf (ABS)</option>
+            </select>
+          </label>
+          <label id="batchAbsProviderLabel" hidden><span class="field-label">ABS source</span>
+            <select id="batchAbsProvider"></select>
           </label>
         </div>
       </div>
@@ -264,6 +278,6 @@
     </section>
   </main>
   <script src="/static/ui-common.js?v=20260619-1"></script>
-  <script src="/static/app.js?v=20260619-5"></script>
+  <script src="/static/app.js?v=20260620-3"></script>
 </body>
 </html>
