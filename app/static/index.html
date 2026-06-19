@@ -145,6 +145,13 @@
           <label><span class="field-label">API delay per worker (ms) <span class="info-tip" data-tooltip="Milliseconds to sleep after each Audible API call per worker. Use 0 unless you hit rate limits."></span></span>
             <input id="apiDelayMs" type="number" min="0" value="0" />
           </label>
+          <label><span class="field-label">Write mode <span class="info-tip" data-tooltip="Controls how existing tags are handled on apply. Smart: skip write if all fields already match (saves time, avoids unnecessary writes). Overwrite: always write all fields. Fill missing: only write fields that are currently empty."></span></span>
+            <select id="writeMode">
+              <option value="smart">Smart (skip if already matching)</option>
+              <option value="fill-missing">Fill missing fields only</option>
+              <option value="overwrite">Overwrite (always write all fields)</option>
+            </select>
+          </label>
         </div>
       </div>
 
@@ -257,6 +264,6 @@
     </section>
   </main>
   <script src="/static/ui-common.js?v=20260619-1"></script>
-  <script src="/static/app.js?v=20260619-3"></script>
+  <script src="/static/app.js?v=20260619-5"></script>
 </body>
 </html>

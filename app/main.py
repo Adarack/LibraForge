@@ -622,6 +622,7 @@ class RunRequest(BaseModel):
 
     workers: int | None = None
     api_delay_ms: int = 0
+    write_mode: str = "smart"
 
 
 class M4BMetadataForm(BaseModel):
@@ -1165,6 +1166,8 @@ def build_command(req: RunRequest) -> tuple[list[str], float]:
             cmd += ["--workers", str(req.workers)]
         if req.api_delay_ms > 0:
             cmd += ["--api-delay-ms", str(req.api_delay_ms)]
+        if req.write_mode and req.write_mode != "smart":
+            cmd += ["--write-mode", req.write_mode]
 
     return cmd, float(req.duration_review_threshold or 10.0)
 
