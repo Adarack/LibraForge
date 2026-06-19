@@ -5,7 +5,7 @@ let manualContext = null;
 let manualCurrentCoverUrl = '';
 
 const $ = (id) => document.getElementById(id);
-const { escapeHtml, renderDownloadLinks, statCard: stat, loadAbsAggProviders, getAbsAggProviderParamHint, isAbsAggReachable, loadAbsAggSettings, saveAbsAggUrl, searchAbsAgg, scoreBadge } = window.UiCommon;
+const { escapeHtml, renderDownloadLinks, statCard: stat, loadAbsAggProviders, getAbsAggProviderParamHint, isAbsAggReachable, checkAbsReachable, loadAbsAggSettings, saveAbsAggUrl, searchAbsAgg, scoreBadge, initFolderBrowser } = window.UiCommon;
 
 function fixerMajorVersion(scriptName) {
   const m = scriptName.match(/-v(\d+)/i);
@@ -33,7 +33,12 @@ async function loadScripts() {
 }
 
 function collectRequest() {
-  const skipPatterns = $('skipPatterns').value.split('\n').map((s) => s.trim()).filter(Boolean);
+  const prefs = window.LibraForgePrefs?.get() || {};
+  const ignoredFromPrefs = (prefs.ignoredFolders || []).map(f => f.trim()).filter(Boolean);
+  const skipPatterns = [
+    ...$('skipPatterns').value.split('\n').map((s) => s.trim()).filter(Boolean),
+    ...ignoredFromPrefs,
+  ];
   return {
     script_name: $('script').value,
     target_path: $('targetPath').value.trim(),
@@ -559,6 +564,37 @@ $("manualBrowseBtn").addEventListener("click", () => browseManualPath());
 $("manualReloadCoverBtn").addEventListener("click", loadManualCurrentCover);
 loadScripts();
 
+// Target path folder browser + default root from preferences
+(async () => {
+  const prefs = window.LibraForgePrefs?.get() || {};
+  let libraryRoot = "/audiobooks";
+  try {
+    const cfg = await fetch("/api/config").then(r => r.json());
+    libraryRoot = cfg.audiobooks_root || "/audiobooks";
+  } catch {}
+  const effectiveRoot = prefs.defaultRootPath || libraryRoot;
+  const targetInput = $('targetPath');
+  if (targetInput && (!targetInput.value || targetInput.value === '/audiobooks')) {
+    targetInput.value = effectiveRoot;
+  }
+  if ($('targetBrowser')) {
+    initFolderBrowser({
+      inputEl: targetInput,
+      datalistEl: $('targetSuggestions'),
+      browserEl: $('targetBrowser'),
+      browseBtnEl: $('targetBrowseBtn'),
+      listEl: $('targetFbList'),
+      breadcrumbEl: $('targetFbBreadcrumb'),
+      upBtnEl: $('targetFbUp'),
+      homeBtnEl: $('targetFbHome'),
+      closeBtnEl: $('targetFbClose'),
+      selectBtnEl: $('targetFbSelect'),
+      currentLabelEl: $('targetFbCurrentLabel'),
+      libraryRoot: effectiveRoot,
+    });
+  }
+})();
+
 // Provider selectors for manual review and batch runs
 (async () => {
   // Load abs-agg providers
@@ -602,12 +638,20 @@ loadScripts();
 
   function toggleManualProviderFields() {
     const v = $('manualProvider').value;
-    $('manualAbsProviderLabel').hidden = v !== 'abs';
+    const isAbs = v === 'abs';
     const isAbsAgg = v === 'abs-agg';
+    if ($('manualAbsProviderLabel')) $('manualAbsProviderLabel').hidden = !isAbs;
+    if ($('absWarning')) $('absWarning').hidden = !isAbs; // hide immediately; async check refines
     ['manualAbsAggProviderLabel', 'manualAbsAggParamsLabel', 'manualAbsAggUrlLabel'].forEach(id => {
-      $(id).hidden = !isAbsAgg;
+      if ($(id)) $(id).hidden = !isAbsAgg;
     });
     if ($('absAggWarning')) $('absAggWarning').hidden = !(isAbsAgg && !isAbsAggReachable());
+    // Async: refine ABS warning once status is known
+    if (isAbs && $('absWarning')) {
+      checkAbsReachable().then(reachable => {
+        if ($('manualProvider').value === 'abs' && $('absWarning')) $('absWarning').hidden = reachable;
+      });
+    }
   }
   $('manualProvider').addEventListener('change', toggleManualProviderFields);
   toggleManualProviderFields();
