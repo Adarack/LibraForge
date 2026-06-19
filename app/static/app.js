@@ -595,6 +595,44 @@ loadScripts();
   }
 })();
 
+// Target path scan
+if ($('targetScanBtn')) {
+  $('targetScanBtn').addEventListener('click', async () => {
+    const path = $('targetPath').value.trim();
+    if (!path) return;
+    const btn = $('targetScanBtn');
+    const results = $('fixerScanResults');
+    const meta = $('fixerScanMeta');
+    const err = $('fixerScanError');
+    btn.disabled = true;
+    btn.textContent = 'Scanning…';
+    results.hidden = true;
+    err.hidden = true;
+    try {
+      const res = await fetch('/api/scan', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ path }),
+      });
+      if (!res.ok) { const e = await res.json(); throw new Error(e.detail || 'Scan failed'); }
+      const data = await res.json();
+      $('fixerCountMetadata').textContent = data.needs_metadata;
+      $('fixerCountProcessed').textContent = data.organized ?? (data.total - data.needs_metadata - data.needs_conversion);
+      $('fixerCountConversion').textContent = data.needs_conversion;
+      const elapsed = data.scan_ms < 1000 ? `${data.scan_ms}ms` : `${(data.scan_ms/1000).toFixed(1)}s`;
+      const cached = data.from_cache ? ' (cached)' : '';
+      meta.textContent = `${data.total} book${data.total !== 1 ? 's' : ''} found · ${elapsed}${cached}`;
+      results.hidden = false;
+    } catch (e) {
+      err.textContent = e.message || 'Scan failed.';
+      err.hidden = false;
+    } finally {
+      btn.disabled = false;
+      btn.textContent = 'Scan';
+    }
+  });
+}
+
 // Provider selectors for manual review and batch runs
 (async () => {
   // Load abs-agg providers
