@@ -623,6 +623,8 @@ class RunRequest(BaseModel):
     workers: int | None = None
     api_delay_ms: int = 0
     write_mode: str = "smart"
+    provider: str = "audible"
+    abs_provider: str = "audible"
 
 
 class M4BMetadataForm(BaseModel):
@@ -1168,6 +1170,11 @@ def build_command(req: RunRequest) -> tuple[list[str], float]:
             cmd += ["--api-delay-ms", str(req.api_delay_ms)]
         if req.write_mode and req.write_mode != "smart":
             cmd += ["--write-mode", req.write_mode]
+        if req.provider == "abs":
+            cmd += ["--provider", "abs"]
+            cmd += ["--abs-provider", req.abs_provider]
+            cmd += ["--abs-url", _ABS_URL]
+            cmd += ["--abs-api-key", _ABS_API_KEY]
 
     return cmd, float(req.duration_review_threshold or 10.0)
 
@@ -3079,6 +3086,143 @@ def abs_agg_search(req: AbsAggSearchRequest) -> dict[str, Any]:
         base_url=base_url,
         provider=req.provider,
         provider_params=req.provider_params,
+        limit=req.limit,
+    )
+
+
+# ---------------------------------------------------------------------------
+# ABS (Audiobookshelf) metadata provider
+# ---------------------------------------------------------------------------
+
+_ABS_URL = os.environ.get("ABS_URL", "http://audiobookshelf").rstrip("/")
+_ABS_API_KEY = os.environ.get("ABS_API_KEY", "")
+
+
+def _abs_request(path: str, params: dict[str, str]) -> Any:
+    import urllib.error as _urlerror
+    import urllib.parse as _urlparse
+
+    if not _ABS_API_KEY:
+        raise HTTPException(status_code=503, detail="ABS_API_KEY not configured.")
+    qs = _urlparse.urlencode(params)
+    url = f"{_ABS_URL}{path}?{qs}"
+    req = urllib.request.Request(
+        url,
+        headers={"Authorization": f"Bearer {_ABS_API_KEY}", "Accept": "application/json"},
+    )
+    try:
+        with urllib.request.urlopen(req, timeout=15) as resp:
+            return json.loads(resp.read().decode("utf-8"))
+    except _urlerror.HTTPError as exc:
+        raise HTTPException(status_code=502, detail=f"ABS error {exc.code}: {exc.reason}") from exc
+    except _urlerror.URLError as exc:
+        raise HTTPException(status_code=502, detail=f"ABS unreachable: {exc}") from exc
+    except Exception as exc:
+        raise HTTPException(status_code=502, detail=f"ABS search failed: {exc}") from exc
+
+
+def search_abs_candidates(*, title: str, author: str = "", provider: str = "audible", limit: int = 10) -> dict[str, Any]:
+    params: dict[str, str] = {"title": title, "provider": provider}
+    if author:
+        params["author"] = author
+    raw = _abs_request("/api/search/books", params)
+    matches = raw if isinstance(raw, list) else []
+
+    results: list[dict[str, Any]] = []
+    for i, match in enumerate(matches[:limit]):
+        series_raw = match.get("series") or []
+        if isinstance(series_raw, list):
+            series_name = series_raw[0].get("series", "") if series_raw else ""
+            sequence = str(series_raw[0].get("sequence", "") or "") if series_raw else ""
+        elif isinstance(series_raw, str):
+            series_name = series_raw
+            sequence = ""
+        else:
+            series_name = ""
+            sequence = ""
+
+        title_val = match.get("title", "") or ""
+        subtitle = match.get("subtitle", "") or ""
+        author_val = match.get("author", "") or ""
+        narrator = match.get("narrator", "") or ""
+        year = str(match.get("publishedYear", "") or "")
+        cover_url = match.get("cover", "") or ""
+        summary = match.get("description", "") or ""
+        asin = match.get("asin", "") or f"abs-{provider}-{i}"
+        isbn = match.get("isbn", "") or ""
+        duration_minutes_raw = match.get("duration")
+        duration_minutes = round(float(duration_minutes_raw), 2) if duration_minutes_raw else None
+        region = match.get("region", "") or ""
+
+        full_meta = {
+            "title": title_val, "subtitle": subtitle, "author": author_val,
+            "narrator": narrator, "series": series_name, "sequence": sequence,
+            "year": year, "cover_url": cover_url, "asin": asin, "summary": summary,
+        }
+        series_only_meta = {
+            "title": "", "subtitle": "", "author": "", "narrator": "",
+            "series": series_name, "sequence": sequence,
+            "year": "", "cover_url": "", "asin": asin, "summary": "",
+        }
+        allowed_modes = ["full"] + (["series_only"] if series_name else [])
+
+        results.append({
+            "asin": asin,
+            "isbn": isbn,
+            "query": title,
+            "score": None,
+            "edit_mode": "full",
+            "recommended_edit_mode": "full",
+            "allowed_edit_modes": allowed_modes,
+            "title": title_val,
+            "subtitle": subtitle,
+            "authors": [author_val] if author_val else [],
+            "narrators": [narrator] if narrator else [],
+            "series": series_name,
+            "sequence": sequence,
+            "duration_minutes": duration_minutes,
+            "year": year,
+            "cover_url": cover_url,
+            "summary": summary,
+            "chosen_metadata": full_meta,
+            "chosen_metadata_by_mode": {"full": full_meta, "series_only": series_only_meta},
+            "duration": {},
+            "provider": "abs",
+            "abs_provider": provider,
+            "abs_region": region,
+        })
+
+    return {"queries": [title], "results": results}
+
+
+class AbsSearchRequest(BaseModel):
+    query: str
+    author: str = ""
+    provider: str = "audible"
+    limit: int = 10
+
+
+@app.get("/api/abs/providers")
+def abs_providers() -> dict[str, Any]:
+    try:
+        data = _abs_request("/api/search/providers", {})
+        return {"providers": {p["value"]: p["text"] for p in data.get("providers", {}).get("books", [])}}
+    except HTTPException:
+        # Return a minimal fallback so the UI stays functional if ABS is unreachable.
+        return {"providers": {"audible": "Audible.com", "google": "Google Books", "itunes": "iTunes", "openlibrary": "Open Library"}}
+
+
+@app.get("/api/abs/status")
+def abs_status() -> dict[str, Any]:
+    return {"configured": bool(_ABS_API_KEY), "url": _ABS_URL}
+
+
+@app.post("/api/abs/search")
+def abs_search(req: AbsSearchRequest) -> dict[str, Any]:
+    return search_abs_candidates(
+        title=req.query,
+        author=req.author,
+        provider=req.provider,
         limit=req.limit,
     )
 
