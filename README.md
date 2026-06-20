@@ -1,28 +1,65 @@
 # LibraForge
 
-> **Note:** This tool is in active development. All features and interfaces are prone to change and updates.
+> **Note:** This tool is in active development. Features and interfaces may change.
 
-Self-hosted Audible metadata matching, M4B conversion, and Audiobookshelf library organisation — three tools in one Docker container.
+Self-hosted Audible metadata matching, M4B conversion, Audiobookshelf-style library
+organisation, and direct Audible downloading — four tools in one Docker container, with
+a vanilla-JS web UI. Every write operation defaults to a dry run.
 
 ---
 
-## Recent Updates
+## Features
 
-- **Smart write diff and write modes** — v5 now compares planned tag values against what is already embedded before writing. The default `smart` mode skips the file write entirely if all fields already match. `fill-missing` only writes fields that have no current value. `overwrite` restores the previous always-write behaviour. *(Needs real-library testing before wide use.)*
-- **ASIN embedding** — the matched Audible ASIN is now written to every file on apply (MP4/M4B freeform atom, MP3 TXXX frame, ffmpeg `-metadata`). Previously the ASIN was recorded in the marker JSON only.
-- **ASIN-aware search** — if a book already has an ASIN embedded in its tags or in its filename (`[B0XXXXXXXX]`), v5 attempts a direct Audible product lookup by ASIN before falling back to keyword searches. The extraction pattern requires the `B0` prefix that all Audible ASINs share, avoiding false matches on other bracket tokens. A mismatch between the existing and matched ASIN flags the book for manual review. *(Needs real-library testing.)*
-- **Audible auth setup page** — a guided OAuth sign-in flow at `/auth-setup` lets you connect an Audible account without CLI tools. The fixer and M4B Tool redirect there automatically when no auth file is found, and skip it when a valid file is already present.
-- **abs-agg metadata provider** — Manual Review and M4B Tool searches can now use [abs-agg](https://github.com/Vito0912/abs-agg) as an alternative metadata source (LibriVox, Storytel, Audioteka, Big Finish, and 7 others). Provider selector lives in Run settings; the existing apply flow works unchanged.
-- **Author initials normalization** — variant initial formats (`L M Kerr`, `L. M. Kerr`, `L.M. Kerr`) are recognised as the same author and deduplicated in both fixer scripts.
-- **Single MP3 direct tag write** — single-file MP3 books now have ID3 tags written directly in addition to the m4b-tool sidecar, so Audiobookshelf picks up metadata immediately without a conversion step.
-- **Studio/broadcaster exclusions expanded** — BBC, BBC Radio, Audible Studios, Brilliance Audio, Podium Audio, Tantor, Macmillan Audio, Full Cast Audio, Blackstone, Dreamscape, L.A. Theatre Works, and others are stripped from author tags in both fixer scripts.
-- **Report separators** — run log files now include a visual separator between book entries for easier manual review.
-- **Concurrent workers (v5)** — parallel Audible API search with `--workers N`; per-thread client pool, per-query dedup, and a persistent chapter-count cache that makes discovery near-instant on repeat runs. ASIN conflict detection prevents wrong matches from being written even when scoring passes.
-- **Scoring improvements** — fixer now rejects candidates whose Audible title carries a different explicit series number than the local title (e.g. "Series 4" vs "Series 6"), and candidates where the local title has an explicit number but the Audible series title does not yet the sequence disagrees.
+### Start Here (`/`)
+Pick a folder and get a one-glance scan summary: how many books need metadata, need
+conversion, and are ready to organise. Links through to the right tool for each stage.
 
-## Planned
+### Metadata Forge (`/forge`)
+Searches Audible (or another provider) and writes matched metadata to your files.
 
-- Local agent advisory review: send a generated report to a local LLM endpoint and display its suggestions (read-only, no automatic writes).
+- **Dry-run first**, then enable **Apply** to write. **Backup and cache** on the first
+  apply preserves originals and speeds up later runs.
+- **Concurrent workers** (v5): parallel Audible search with a per-thread client pool,
+  per-query de-duplication, and a persistent chapter-count cache that makes repeat
+  discovery near-instant.
+- **Write modes:** `smart` (skip the write when embedded tags already match),
+  `fill-missing` (only write currently-empty fields), `overwrite` (always write).
+- **ASIN aware:** the matched ASIN is embedded in every file; if a file already carries
+  an ASIN (tags or `[B0XXXXXXXX]` in the name) it is looked up directly first, and an
+  ASIN mismatch flags the book for manual review.
+- **Manual Review:** load any book or folder, search Audible manually, and apply per
+  book with an explicit `Full metadata` or `Series only` mode.
+- **Providers:** Audible (direct), **Audiobookshelf** (via its own search API), and
+  **abs-agg** (LibriVox, Storytel, BookBeat, Big Finish, and others).
+
+### M4B Tool (`/m4b-tool`)
+Converts or merges audio into a single M4B. Loads existing fixer sidecars automatically,
+scans for multipart / non-M4B conversion candidates, and exposes codec, bitrate, and job
+count. `No conversion` is safe only when all source streams are AAC with matching sample
+rate and channel layout.
+
+### Folder Forge (`/organizer`)
+Plans and applies `Author/Series/Book N - Title` destination moves with a dry-run
+preview and structured review reasons. **Index library and exit** rebuilds the
+destination-structure cache on its own.
+
+### Library Downloader (`/library`)
+Browse your Audible library and download purchases straight into a mounted folder,
+decrypted to standard **M4B** with chapters, metadata, embedded cover, and ASIN intact —
+no external tooling. Supports AAX (`activation_bytes`) and AAXC (per-file voucher).
+Books already in your library are flagged as **Owned**; a per-run or per-book rule
+controls duplicate handling (Keep both / Replace), and an optional pass auto-organises
+the downloads when finished.
+
+### Accounts (`/auth-setup`)
+Guided Audible OAuth sign-in — no CLI tools. Connect **multiple accounts**, each with a
+recognisable name, and **switch between them in one click**, rename them, or **disconnect**
+cleanly (deregisters the device with Audible, then removes the login; offers retry or
+local-only delete if Audible is unreachable). The active account is shared by every tool.
+This page also configures the Audiobookshelf and abs-agg providers.
+
+### Planned
+- Local agent advisory review (read-only LLM suggestions, no automatic writes).
 - Chapter detection via speech recognition before M4B conversion.
 - Unraid Community Apps package.
 
@@ -47,65 +84,16 @@ AUDIBLE_AUTH_PATH=/path/to/audible-auth
 docker compose up -d --build
 ```
 
-LibraForge listens on `127.0.0.1:5056`. For HTTPS, attach to your reverse proxy network via `docker-compose.override.yml` (git-ignored).
+LibraForge listens on `127.0.0.1:5056`. For HTTPS, attach to your reverse proxy network
+via `docker-compose.override.yml` (git-ignored). Connect an Audible account from the
+**Accounts** page, or skip Audible and use Audiobookshelf / abs-agg as providers.
 
 ### Optional companion services
 
 | Service | Purpose | Required? |
 |---|---|---|
-| [Audiobookshelf](https://www.audiobookshelf.org/) | Alternative metadata provider via ABS's built-in search API. Create a dedicated API key in ABS Settings → Users → API Keys and set `ABS_API_KEY` in `.env`. | No |
-| [abs-agg](https://github.com/Vito0912/abs-agg) | Aggregates metadata from LibriVox, Storytel, BookBeat, Big Finish, and others. Deploy on the same Docker network as LibraForge; configure the URL in the provider settings panel. If unreachable, LibraForge shows a warning when abs-agg is selected. | No |
-
----
-
-## Usage
-
-### Metadata Forge (`/`)
-
-Searches Audible and writes matched metadata to your audiobook files.
-
-1. Select your root folder (e.g. `/audiobooks/_unorganized`).
-2. Run a **dry run** first — review the report and manual review items.
-3. Enable **Backup and cache** on the first apply run to preserve originals and speed up future runs.
-4. Enable **Apply changes** and re-run to write tags.
-
-Key options:
-
-| Option | When to use |
-|---|---|
-| Backup and cache | Always on first apply; caches probes for future runs |
-| Force / ignore markers | Re-process already-matched files |
-| Force original tags | Re-search using pre-apply embedded tags instead of post-apply Audible values |
-| Re-probe audio files | Ignore cache and probe files fresh |
-| Write Audiobookshelf metadata.json | Write a sidecar instead of embedding tags |
-| Workers (v5) | Number of parallel Audible search workers; recommended 5, max 10 |
-
-**Manual Review** lets you load any book and search Audible manually. Requires an explicit `Full metadata` or `Series only` mode before applying.
-<img width="1215" height="1073" alt="image" src="https://github.com/user-attachments/assets/7702662c-d3d8-47cf-945d-777f86e4cbbd" />
-
-### M4B Tool (`/m4b-tool`)
-
-Converts or merges audio into a single M4B file.
-
-1. Load a source file or folder. Existing fixer sidecars are loaded automatically.
-2. Search Audible or edit metadata manually.
-3. Use **Find conversion candidates** to scan for multipart or non-M4B books.
-4. Set codec, bitrate, and jobs, then convert.
-
-`No conversion` is recommended only when all source streams are AAC with matching sample rate and channel layout.
-<img width="1201" height="1160" alt="image" src="https://github.com/user-attachments/assets/258208dc-0ddb-4642-9541-7c47378e24f8" />
-
-### Folder Forge (`/organizer`)
-
-Plans and applies `Author/Series/Book N - Title` destination moves.
-
-1. Set source (`/audiobooks/_unorganized`) and destination (`/audiobooks`).
-2. Run a dry-run preview.
-3. Review move plans — items flagged for review show structured reasons.
-4. Enable **Apply** and run to execute moves.
-
-Run **Index library and exit** to rebuild the destination structure cache independently.
-<img width="1198" height="1197" alt="image" src="https://github.com/user-attachments/assets/024a57ca-333f-445a-bf33-4a5c512f3159" />
+| [Audiobookshelf](https://www.audiobookshelf.org/) | Metadata provider via ABS's built-in search API. Create a dedicated API key in ABS Settings → Users → API Keys and add it on the Accounts page. | No |
+| [abs-agg](https://github.com/Vito0912/abs-agg) | Aggregates metadata from LibriVox, Storytel, BookBeat, Big Finish, and others. Deploy on the same Docker network; set the URL in provider settings. | No |
 
 ---
 
@@ -114,17 +102,21 @@ Run **Index library and exit** to rebuild the destination structure cache indepe
 | Purpose | Path |
 |---|---|
 | Audiobook library | `/audiobooks` |
-| Audible auth directory | `/auth` (default file: `/auth/audible-metadata.json`) |
+| Audible auth directory | `/auth` — active account `/auth/audible-metadata.json`; saved accounts `/auth/accounts/` |
 | Scripts | `/app/scripts` |
 | Reports and caches | `/app/reports` |
 
 ## Safety
 
-- All operations default to dry-run. Review before applying.
-- Back up media before the first write.
-- Use a dedicated Audible account for metadata lookup.
-- Mount Audible credentials read-only.
-- Do not expose LibraForge to an untrusted network.
+- All operations default to dry-run. Review before applying, and back up media before
+  the first write.
+- A dedicated, empty Audible account is recommended for metadata lookups; use a
+  real-library account for the downloader.
+- The `/auth` directory is mounted **read-write** so the app can add, switch, and
+  disconnect accounts. Point `AUDIBLE_AUTH_PATH` at a dedicated directory — not your
+  primary audible-cli config — and keep it off untrusted networks.
+- Do not expose LibraForge to an untrusted network. Access control is host-level only;
+  anyone who can reach the port can use it.
 
 ## Development
 
@@ -132,13 +124,14 @@ Run **Index library and exit** to rebuild the destination structure cache indepe
 # Run tests
 python3 -m unittest discover -s app/tests -v
 
-# Restart after backend changes
+# Restart after backend (app/main.py) changes
 docker compose restart libraforge
 
 # Rebuild after Dockerfile or dependency changes
 docker compose up -d --build
 ```
 
-Static files (`app/`, `scripts/`) are bind-mounted — HTML, CSS, and JS edits are live without restart.
+Static files (`app/static`, `scripts/`) are bind-mounted — HTML, CSS, and JS edits are
+live without a restart.
 
 See [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md) for dependency licence information.

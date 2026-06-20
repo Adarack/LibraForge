@@ -11,51 +11,125 @@
 </head>
 <body data-page="auth-setup">
   <a class="skip-link" href="#main-content">Skip to content</a>
-  <main class="shell" id="main-content">
-    <header class="app-header">
+  <header class="topbar">
+    <div class="topbar-inner">
       <div class="brand">
         <img class="app-logo" src="/app-icon.png?v=20260613-3" alt="" aria-hidden="true" />
-        <div class="header-copy">
-          <h1>LibraForge</h1>
-          <p class="brand-subtitle">Your Audiobookshelf companion tool to forge your library into shape.</p>
+        <div class="brand-text">
+          <span class="brand-name">LibraForge</span>
+          <span class="brand-subtitle">Your Audiobookshelf companion tool to forge your library into shape.</span>
         </div>
       </div>
-    </header>
+      <nav class="site-nav" aria-label="LibraForge tools">
+        <a class="site-nav-link" href="/">Start Here</a>
+        <a class="site-nav-link" href="/forge">Metadata Forge</a>
+        <a class="site-nav-link" href="/m4b-tool">M4B Tool</a>
+        <a class="site-nav-link" href="/organizer">Folder Forge</a>
+        <a class="site-nav-link" href="/library">Library</a>
+        <a class="site-nav-link active" href="/auth-setup" aria-current="page">Accounts</a>
+      </nav>
+      <div class="topbar-actions">
+        <button id="settingsToggle" class="icon-button" type="button" aria-label="Open global settings" aria-expanded="false" aria-controls="globalSettings">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M19.14 12.94c.04-.31.06-.63.06-.94s-.02-.63-.07-.94l2.03-1.58-1.92-3.32-2.39.96a7.2 7.2 0 0 0-1.63-.94L14.86 3h-3.84l-.36 3.18c-.58.24-1.12.55-1.63.94l-2.39-.96-1.92 3.32 2.03 1.58c-.05.31-.07.64-.07.94s.02.63.07.94l-2.03 1.58 1.92 3.32 2.39-.96c.5.39 1.05.7 1.63.94l.36 3.18h3.84l.36-3.18c.58-.24 1.13-.55 1.63-.94l2.39.96 1.92-3.32-2.02-1.58ZM12.94 15.5a3.5 3.5 0 1 1 0-7 3.5 3.5 0 0 1 0 7Z"/></svg>
+        </button>
+      </div>
+    </div>
+  </header>
+
+  <div id="globalSettings" class="settings-panel" hidden>
+    <div class="settings-panel-head">
+      <div>
+        <span class="eyebrow">Global preferences</span>
+        <h2>Settings</h2>
+      </div>
+      <button id="settingsClose" class="icon-button small" type="button" aria-label="Close global settings">×</button>
+    </div>
+    <div class="settings-grid">
+      <label class="preference-field">Appearance
+        <select id="uiTheme"><option value="system">System</option><option value="dark">Dark</option><option value="light">Light</option></select>
+      </label>
+      <label class="preference-field">Surface palette
+        <select id="uiSurface"></select>
+      </label>
+      <label class="preference-field">Accent color
+        <select id="uiAccent"><option value="sky">Sky</option><option value="violet">Violet</option><option value="emerald">Emerald</option><option value="amber">Amber</option></select>
+      </label>
+      <label class="preference-field">Display density
+        <select id="uiDensity"><option value="comfortable">Comfortable</option><option value="compact">Compact</option></select>
+      </label>
+    </div>
+    <section class="settings-section">
+      <h3>Library</h3>
+      <label class="preference-field">Default root path
+        <input id="defaultRootPath" placeholder="/audiobooks" style="font-family:var(--font-mono);font-size:0.85em" />
+      </label>
+      <div style="margin-top:12px">
+        <p style="font-size:0.85em;color:var(--text-soft);margin:0 0 6px">Folders to ignore <span style="color:var(--muted);font-size:0.9em">(prefix or exact name — e.g. <code>.</code> hides hidden dirs, <code>@eaDir</code> hides Synology system dirs)</span></p>
+        <div id="ignoredFoldersList" style="display:flex;flex-direction:column;gap:4px;margin-bottom:8px"></div>
+        <div style="display:flex;gap:6px">
+          <input id="ignoredFoldersInput" placeholder="folder name or prefix" style="flex:1;font-family:var(--font-mono);font-size:0.85em" />
+          <button id="ignoredFoldersAdd" type="button" class="secondary">Add</button>
+        </div>
+      </div>
+    </section>
+    <section class="settings-section">
+      <h3>Developer</h3>
+      <label class="preference-field"><input type="checkbox" id="debugMode" /> Debug mode</label>
+      <div id="debugLinks" hidden style="margin-top:10px;display:flex;flex-direction:column;gap:6px;font-size:0.9em">
+        <a href="/auth-setup">Auth &amp; provider setup →</a>
+      </div>
+    </section>
+  </div>
+
+  <main class="shell" id="main-content">
 
     <section class="card" style="max-width:640px;margin:0 auto">
-      <h2>Audible sign in required</h2>
-      <p>LibraForge uses Audible to look up book metadata. You need to connect an Audible account before running the Metadata Forge or M4B Tool.</p>
+      <h2>Audible accounts</h2>
+      <p>LibraForge uses Audible to look up book metadata and (optionally) download your purchases. Connect one or more accounts and switch between them whenever you like.</p>
 
       <div class="callout callout-warning" style="margin:18px 0">
-        <strong>Recommendation:</strong> use a dedicated empty Audible account for metadata lookups rather than your primary account. No purchases, downloads, or library access are used — only the product catalogue search API.
+        <strong>Tip:</strong> a dedicated empty Audible account is ideal for metadata lookups. For the Library Downloader, sign in with the account that owns the books you want to download.
       </div>
 
-      <p class="note">Encrypted auth files are not supported. The generated auth file is stored unencrypted at <code>/auth/audible-metadata.json</code> inside the container (mounted from the host path you configured).</p>
+      <p class="note">Auth files are stored unencrypted under <code>/auth</code> inside the container (mounted from your configured host path). The active account lives at <code>/auth/audible-metadata.json</code>; others are kept in <code>/auth/accounts/</code>.</p>
 
-      <hr style="border:none;border-top:1px solid var(--border);margin:22px 0" />
+      <!-- Connected accounts switcher -->
+      <div id="accountsSection" hidden>
+        <hr style="border:none;border-top:1px solid var(--border);margin:22px 0" />
+        <h3>Connected accounts</h3>
+        <div id="accountsList"></div>
+        <p id="accountsError" class="row-error" hidden></p>
+        <div class="actions" style="margin-top:14px;display:flex;gap:10px;flex-wrap:wrap">
+          <button id="addAccountBtn" type="button">Log in with another account</button>
+          <a href="/" class="button-link">Go to Start Here →</a>
+        </div>
+      </div>
+
+      <hr style="border:none;border-top:1px solid var(--border);margin:22px 0" id="loginDivider" />
 
       <!-- Step 1 -->
       <div id="step1">
-        <h3>Step 1 — generate a login URL</h3>
+        <h3 id="step1Heading">Connect an Audible account</h3>
         <div class="grid" style="--grid-cols:1">
+          <label>
+            <span class="field-label">Account name (so you can recognise it later)</span>
+            <input id="flavorName" maxlength="80" placeholder="e.g. Metadata lookups, or My main account" autocomplete="off" />
+          </label>
           <label>
             <span class="field-label">Audible marketplace</span>
             <select id="localeSelect"></select>
           </label>
-          <label>
-            <span class="field-label">Auth file path (inside container)</span>
-            <input id="authFilePath" value="/auth/audible-metadata.json" />
-          </label>
         </div>
-        <div class="actions" style="margin-top:14px">
+        <div class="actions" style="margin-top:14px;display:flex;gap:10px;flex-wrap:wrap">
           <button id="generateBtn" type="button">Generate login URL</button>
+          <button id="cancelAddBtn" class="secondary" type="button" hidden>Cancel</button>
         </div>
         <p id="step1Error" class="note" style="color:var(--danger);display:none"></p>
       </div>
 
       <!-- Step 2 -->
       <div id="step2" hidden>
-        <h3>Step 2 — sign in on Amazon</h3>
+        <h3>Sign in on Amazon</h3>
         <p>Open the link below in your browser. Sign in with your Audible (Amazon) account. After signing in, Amazon will redirect your browser to a new URL — the page may appear blank or show a brief error message. That is expected.</p>
         <div style="margin:14px 0">
           <a id="oauthLink" href="#" target="_blank" rel="noopener" class="button-link">Open Amazon sign-in →</a>
@@ -71,15 +145,6 @@
           <button id="restartBtn" class="secondary" type="button">Start over</button>
         </div>
         <p id="step2Error" class="note" style="color:var(--danger);display:none"></p>
-      </div>
-
-      <!-- Step 3 — success -->
-      <div id="step3" hidden>
-        <h3>Setup complete</h3>
-        <p style="color:var(--success)">Auth file saved successfully. You can now use Metadata Forge and M4B Tool.</p>
-        <div class="actions" style="margin-top:14px">
-          <a href="/" class="button-link">Go to Start Here →</a>
-        </div>
       </div>
 
       <!-- Skip -->
@@ -153,47 +218,238 @@
     }
     h3 { margin: 0 0 10px; font-size: 1.05rem; }
     #step2 textarea { font-family: var(--font-mono); font-size: 0.82em; }
+
+    .account-row { display:flex; align-items:center; justify-content:space-between; gap:12px; padding:12px 14px; border:1px solid var(--border); border-radius:10px; margin-bottom:8px; flex-wrap:wrap; }
+    .account-row.active { border-color: var(--accent); background: var(--surface-raised); }
+    .account-name { font-weight:700; font-size:1rem; }
+    .account-sub { font-size:0.8em; color:var(--muted); margin-top:3px; }
+    .active-badge { display:inline-block; font-size:0.68rem; font-weight:600; padding:2px 9px; border-radius:12px; background:var(--accent); color:var(--accent-ink); margin-left:8px; vertical-align:middle; }
+    .account-actions { display:flex; gap:6px; align-items:center; flex-wrap:wrap; }
+    .account-actions button { min-height:34px; padding:6px 12px; font-size:0.88em; }
+    .icon-pencil { background:none; border:1px solid var(--border); color:var(--text-soft); box-shadow:none; }
+    .icon-pencil:hover:not(:disabled) { color:var(--text); border-color:var(--border-strong); background:var(--surface-hover); box-shadow:none; }
+    .btn-danger { background:none; border:1px solid rgb(var(--danger-rgb, 239 68 68) / 45%); color:var(--danger); box-shadow:none; }
+    .btn-danger:hover:not(:disabled) { background:rgb(var(--danger-rgb, 239 68 68) / 12%); box-shadow:none; }
+    .rename-input { min-height:34px; max-width:240px; }
+    .row-error { font-size:0.85em; color:var(--danger); margin-top:10px; display:flex; gap:8px; align-items:center; flex-wrap:wrap; }
+    .row-error button { min-height:30px; padding:4px 10px; font-size:0.82em; }
   </style>
 
   <script>
     (() => {
-      const step1 = document.getElementById("step1");
-      const step2 = document.getElementById("step2");
-      const step3 = document.getElementById("step3");
-      const localeSelect = document.getElementById("localeSelect");
-      const authFilePath = document.getElementById("authFilePath");
-      const generateBtn = document.getElementById("generateBtn");
-      const step1Error = document.getElementById("step1Error");
-      const oauthLink = document.getElementById("oauthLink");
-      const redirectUrl = document.getElementById("redirectUrl");
-      const completeBtn = document.getElementById("completeBtn");
-      const restartBtn = document.getElementById("restartBtn");
-      const step2Error = document.getElementById("step2Error");
-      const skipBtn = document.getElementById("skipBtn");
-      const absConnectBtn = document.getElementById("absConnectBtn");
-      const absConnectStatus = document.getElementById("absConnectStatus");
-      const absStatusBadge = document.getElementById("absStatusBadge");
+      const $ = (id) => document.getElementById(id);
+      const step1 = $("step1"), step2 = $("step2");
+      const accountsSection = $("accountsSection"), accountsList = $("accountsList");
+      const accountsError = $("accountsError"), loginDivider = $("loginDivider");
+      const step1Heading = $("step1Heading"), cancelAddBtn = $("cancelAddBtn");
+      const localeSelect = $("localeSelect"), flavorName = $("flavorName");
+      const generateBtn = $("generateBtn"), step1Error = $("step1Error");
+      const oauthLink = $("oauthLink"), redirectUrl = $("redirectUrl");
+      const completeBtn = $("completeBtn"), restartBtn = $("restartBtn"), step2Error = $("step2Error");
+      const skipBtn = $("skipBtn");
+      const absConnectBtn = $("absConnectBtn"), absConnectStatus = $("absConnectStatus"), absStatusBadge = $("absStatusBadge");
 
-      // If auth file already exists stay on page — user may still want to configure ABS.
-      fetch("/api/auth/status")
-        .then((r) => r.json())
-        .then((data) => {
-          if (data.auth_ok) {
-            step1.hidden = true;
-            step2.hidden = true;
-            step3.hidden = false;
-            document.getElementById("skipSection").hidden = true;
-          }
-        })
-        .catch(() => {});
+      const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 
-      // Skip Audible — mark in sessionStorage and go to home.
-      skipBtn.addEventListener("click", () => {
-        sessionStorage.setItem("audible-skipped", "1");
-        window.location.replace("/");
+      async function api(method, url, body) {
+        const opts = { method, headers: {} };
+        if (body !== undefined) { opts.headers["Content-Type"] = "application/json"; opts.body = JSON.stringify(body); }
+        let data = {};
+        const res = await fetch(url, opts);
+        try { data = await res.json(); } catch { /* no body */ }
+        return { ok: res.ok, status: res.status, data };
+      }
+
+      function showError(el, msg) { el.textContent = msg; el.style.display = ""; }
+      function clearError(el) { el.style.display = "none"; el.textContent = ""; }
+      function hideAccountsError() { accountsError.hidden = true; accountsError.innerHTML = ""; }
+
+      // ── Account switcher ──────────────────────────────────────────────────
+      let hasAccounts = false;
+
+      function accountRow(a) {
+        const badge = a.active ? `<span class="active-badge">Active</span>` : "";
+        const sub = [a.marketplace, a.name].filter(Boolean).join(" · ");
+        const actions = a.active
+          ? `<button class="btn-danger" data-act="disconnect">Disconnect</button>`
+          : `<button data-act="switch" data-uid="${esc(a.user_id)}">Switch</button>
+             <button class="btn-danger" data-act="remove" data-uid="${esc(a.user_id)}">Remove</button>`;
+        return `
+          <div class="account-row${a.active ? " active" : ""}" data-uid="${esc(a.user_id)}">
+            <div class="account-info">
+              <span class="account-name">${esc(a.flavor_name)}</span>${badge}
+              <button class="icon-pencil" data-act="edit" data-uid="${esc(a.user_id)}" title="Rename" aria-label="Rename account">✎</button>
+              <div class="account-sub">${esc(sub)}</div>
+            </div>
+            <div class="account-actions">${actions}</div>
+          </div>`;
+      }
+
+      function renderAccounts(accounts) {
+        hasAccounts = accounts.length > 0;
+        accountsList.innerHTML = accounts.map(accountRow).join("");
+        accountsSection.hidden = !hasAccounts;
+        // When accounts exist, hide the login form until "Log in with another account".
+        if (hasAccounts) hideLogin();
+        else showLogin(false);
+      }
+
+      async function loadAccounts() {
+        hideAccountsError();
+        const res = await api("GET", "/api/auth/accounts");
+        if (res.ok) renderAccounts(res.data.accounts || []);
+      }
+
+      // Inline rename
+      function startRename(uid, current) {
+        const row = accountsList.querySelector(`.account-row[data-uid="${CSS.escape(uid)}"] .account-info`);
+        if (!row) return;
+        row.innerHTML = `
+          <input class="rename-input" value="${esc(current)}" maxlength="80" />
+          <button data-act="save-rename" data-uid="${esc(uid)}">Save</button>
+          <button class="secondary" data-act="cancel-rename">Cancel</button>`;
+        const inp = row.querySelector(".rename-input");
+        inp.focus(); inp.select();
+        inp.addEventListener("keydown", (e) => { if (e.key === "Enter") saveRename(uid, inp.value); if (e.key === "Escape") loadAccounts(); });
+      }
+
+      async function saveRename(uid, value) {
+        const name = value.trim();
+        if (!name) { loadAccounts(); return; }
+        const res = await api("PATCH", `/api/auth/accounts/${encodeURIComponent(uid)}`, { flavor_name: name });
+        if (!res.ok) showRowError(typeof res.data.detail === "string" ? res.data.detail : "Rename failed.");
+        loadAccounts();
+      }
+
+      function showRowError(msg) { accountsError.hidden = false; accountsError.innerHTML = `<span>${esc(msg)}</span>`; }
+
+      // Deregister-failure prompt: Retry / Delete anyway
+      function promptDeregFail(message, onRetry, onForce) {
+        accountsError.hidden = false;
+        accountsError.innerHTML = `<span>${esc(message)}</span>`;
+        const retry = document.createElement("button");
+        retry.textContent = "Retry"; retry.addEventListener("click", onRetry);
+        const del = document.createElement("button");
+        del.className = "btn-danger"; del.textContent = "Delete anyway"; del.addEventListener("click", onForce);
+        accountsError.append(retry, del);
+      }
+
+      async function disconnectActive(force = false) {
+        hideAccountsError();
+        const res = await api("POST", "/api/auth/disconnect", { force });
+        if (res.ok) { loadAccounts(); return; }
+        const d = res.data.detail;
+        if (res.status === 502 && d && d.deregister_failed) {
+          promptDeregFail(d.message || "Could not deregister with Audible.", () => disconnectActive(false), () => disconnectActive(true));
+        } else {
+          showRowError(typeof d === "string" ? d : "Disconnect failed.");
+        }
+      }
+
+      async function removeAccount(uid, force = false) {
+        hideAccountsError();
+        const res = await api("DELETE", `/api/auth/accounts/${encodeURIComponent(uid)}?force=${force}`);
+        if (res.ok) { loadAccounts(); return; }
+        const d = res.data.detail;
+        if (res.status === 502 && d && d.deregister_failed) {
+          promptDeregFail(d.message || "Could not deregister with Audible.", () => removeAccount(uid, false), () => removeAccount(uid, true));
+        } else {
+          showRowError(typeof d === "string" ? d : "Remove failed.");
+        }
+      }
+
+      async function switchAccount(uid) {
+        hideAccountsError();
+        const res = await api("POST", `/api/auth/accounts/${encodeURIComponent(uid)}/activate`);
+        if (res.ok) loadAccounts();
+        else showRowError(typeof res.data.detail === "string" ? res.data.detail : "Switch failed.");
+      }
+
+      accountsList.addEventListener("click", (e) => {
+        const btn = e.target.closest("button[data-act]");
+        if (!btn) return;
+        const act = btn.dataset.act;
+        const uid = btn.dataset.uid;
+        if (act === "switch") switchAccount(uid);
+        else if (act === "disconnect") { if (confirm("Disconnect this account? This deregisters the device with Audible and removes its login.")) disconnectActive(false); }
+        else if (act === "remove") { if (confirm("Remove this saved account? This deregisters the device with Audible.")) removeAccount(uid, false); }
+        else if (act === "edit") {
+          const name = btn.closest(".account-info").querySelector(".account-name").textContent;
+          startRename(uid, name);
+        } else if (act === "save-rename") {
+          saveRename(uid, btn.closest(".account-info").querySelector(".rename-input").value);
+        } else if (act === "cancel-rename") loadAccounts();
       });
 
-      // ABS status badge.
+      // ── Login form show/hide ──────────────────────────────────────────────
+      function showLogin(addMode) {
+        step1.hidden = false;
+        step2.hidden = true;
+        loginDivider.hidden = !hasAccounts; // divider only needed to separate from the list
+        step1Heading.textContent = addMode ? "Log in with another account" : "Connect an Audible account";
+        cancelAddBtn.hidden = !addMode;
+        clearError(step1Error);
+        flavorName.value = "";
+      }
+      function hideLogin() {
+        step1.hidden = true;
+        step2.hidden = true;
+        loginDivider.hidden = true;
+      }
+
+      $("addAccountBtn").addEventListener("click", () => { showLogin(true); step1.scrollIntoView({ behavior: "smooth", block: "nearest" }); });
+      cancelAddBtn.addEventListener("click", () => { if (hasAccounts) hideLogin(); });
+
+      // ── Login flow ────────────────────────────────────────────────────────
+      generateBtn.addEventListener("click", async () => {
+        clearError(step1Error);
+        if (!flavorName.value.trim()) { showError(step1Error, "Give this account a name first."); flavorName.focus(); return; }
+        generateBtn.disabled = true; generateBtn.textContent = "Generating…";
+        try {
+          const res = await api("POST", "/api/auth/login/start", { locale: localeSelect.value, flavor_name: flavorName.value.trim() });
+          if (!res.ok) throw new Error(res.data.detail || "Failed to generate URL");
+          oauthLink.href = res.data.oauth_url;
+          step1.hidden = true; step2.hidden = false; loginDivider.hidden = true;
+        } catch (err) { showError(step1Error, err.message); }
+        finally { generateBtn.disabled = false; generateBtn.textContent = "Generate login URL"; }
+      });
+
+      restartBtn.addEventListener("click", () => {
+        redirectUrl.value = ""; clearError(step2Error);
+        step2.hidden = true; showLogin(hasAccounts);
+      });
+
+      completeBtn.addEventListener("click", async () => {
+        clearError(step2Error);
+        const url = redirectUrl.value.trim();
+        if (!url) { showError(step2Error, "Paste the redirect URL from your browser first."); return; }
+        completeBtn.disabled = true; completeBtn.textContent = "Completing…";
+        try {
+          const res = await api("POST", "/api/auth/login/complete", { redirect_url: url });
+          if (!res.ok) throw new Error(res.data.detail || "Setup failed");
+          redirectUrl.value = "";
+          await loadAccounts();
+          accountsSection.scrollIntoView({ behavior: "smooth", block: "nearest" });
+        } catch (err) { showError(step2Error, err.message); }
+        finally { completeBtn.disabled = false; completeBtn.textContent = "Complete setup"; }
+      });
+
+      // ── Init ──────────────────────────────────────────────────────────────
+      fetch("/api/auth/locales").then((r) => r.json()).then(({ locales }) => {
+        Object.entries(locales).forEach(([key, label]) => {
+          const opt = document.createElement("option");
+          opt.value = key; opt.textContent = label;
+          if (key === "us") opt.selected = true;
+          localeSelect.appendChild(opt);
+        });
+      });
+
+      loadAccounts();
+
+      // ── Skip ──────────────────────────────────────────────────────────────
+      skipBtn.addEventListener("click", () => { sessionStorage.setItem("audible-skipped", "1"); window.location.replace("/"); });
+
+      // ── ABS connection ────────────────────────────────────────────────────
       function renderAbsBadge(status) {
         if (status.reachable) {
           absStatusBadge.textContent = "Connected";
@@ -206,118 +462,22 @@
           absStatusBadge.style.cssText = "background:var(--surface-raised);color:var(--muted);font-size:0.75rem;font-weight:500;padding:2px 8px;border-radius:12px;margin-left:8px;vertical-align:middle";
         }
       }
-
       fetch("/api/abs/status").then((r) => r.json()).then(renderAbsBadge).catch(() => {});
 
       absConnectBtn.addEventListener("click", async () => {
-        const url = document.getElementById("absUrl").value.trim();
-        const key = document.getElementById("absApiKey").value.trim();
+        const url = $("absUrl").value.trim();
+        const key = $("absApiKey").value.trim();
         if (!key) { absConnectStatus.textContent = "Enter an API key."; return; }
-        absConnectBtn.disabled = true;
-        absConnectBtn.textContent = "Saving…";
-        absConnectStatus.textContent = "";
+        absConnectBtn.disabled = true; absConnectBtn.textContent = "Saving…"; absConnectStatus.textContent = "";
         try {
-          const res = await fetch("/api/abs/save-config", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ url, api_key: key }),
-          });
+          const res = await fetch("/api/abs/save-config", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ url, api_key: key }) });
           const data = await res.json();
           if (!res.ok) throw new Error(data.detail || "Failed to save.");
           renderAbsBadge(data);
-          absConnectStatus.textContent = data.reachable
-            ? "Connected successfully. ABS providers are now available."
-            : "Key saved, but ABS is not reachable at the given URL. Check that the service is running.";
+          absConnectStatus.textContent = data.reachable ? "Connected successfully. ABS providers are now available." : "Key saved, but ABS is not reachable at the given URL. Check that the service is running.";
           absConnectStatus.style.color = data.reachable ? "var(--success)" : "var(--warning,#e8a020)";
-        } catch (err) {
-          absConnectStatus.textContent = err.message;
-          absConnectStatus.style.color = "var(--danger)";
-        } finally {
-          absConnectBtn.disabled = false;
-          absConnectBtn.textContent = "Save and verify";
-        }
-      });
-
-      // Load locales
-      fetch("/api/auth/locales")
-        .then((r) => r.json())
-        .then(({ locales }) => {
-          Object.entries(locales).forEach(([key, label]) => {
-            const opt = document.createElement("option");
-            opt.value = key;
-            opt.textContent = label;
-            if (key === "us") opt.selected = true;
-            localeSelect.appendChild(opt);
-          });
-        });
-
-      function showError(el, msg) {
-        el.textContent = msg;
-        el.style.display = "";
-      }
-      function clearError(el) {
-        el.style.display = "none";
-        el.textContent = "";
-      }
-
-      generateBtn.addEventListener("click", async () => {
-        clearError(step1Error);
-        generateBtn.disabled = true;
-        generateBtn.textContent = "Generating…";
-        try {
-          const res = await fetch("/api/auth/login/start", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              locale: localeSelect.value,
-              auth_file: authFilePath.value.trim() || "/auth/audible-metadata.json",
-            }),
-          });
-          const data = await res.json();
-          if (!res.ok) throw new Error(data.detail || "Failed to generate URL");
-          oauthLink.href = data.oauth_url;
-          step1.hidden = true;
-          step2.hidden = false;
-        } catch (err) {
-          showError(step1Error, err.message);
-        } finally {
-          generateBtn.disabled = false;
-          generateBtn.textContent = "Generate login URL";
-        }
-      });
-
-      restartBtn.addEventListener("click", () => {
-        redirectUrl.value = "";
-        clearError(step2Error);
-        step2.hidden = true;
-        step1.hidden = false;
-      });
-
-      completeBtn.addEventListener("click", async () => {
-        clearError(step2Error);
-        const url = redirectUrl.value.trim();
-        if (!url) {
-          showError(step2Error, "Paste the redirect URL from your browser first.");
-          return;
-        }
-        completeBtn.disabled = true;
-        completeBtn.textContent = "Completing…";
-        try {
-          const res = await fetch("/api/auth/login/complete", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ redirect_url: url }),
-          });
-          const data = await res.json();
-          if (!res.ok) throw new Error(data.detail || "Setup failed");
-          step2.hidden = true;
-          step3.hidden = false;
-        } catch (err) {
-          showError(step2Error, err.message);
-        } finally {
-          completeBtn.disabled = false;
-          completeBtn.textContent = "Complete setup";
-        }
+        } catch (err) { absConnectStatus.textContent = err.message; absConnectStatus.style.color = "var(--danger)"; }
+        finally { absConnectBtn.disabled = false; absConnectBtn.textContent = "Save and verify"; }
       });
     })();
   </script>

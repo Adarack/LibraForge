@@ -21,8 +21,10 @@ services:
       - ./reports:/app/reports
       # Your audiobook library. Change left side if needed.
       - ${AUDIOBOOKS_PATH}:/audiobooks
-      # Audible auth files. Recommended: unencrypted dummy metadata-only account.
-      - ${AUDIBLE_AUTH_PATH}:/auth:ro
+      # Audible auth files. Read-write so the app can add/switch/disconnect accounts
+      # (login + deregister write here). Recommended: a dedicated dir, not your main
+      # audible-cli config. Future hardening: gate the web app behind Linux users.
+      - ${AUDIBLE_AUTH_PATH}:/auth
     healthcheck:
       test:
         - CMD

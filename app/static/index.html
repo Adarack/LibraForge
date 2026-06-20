@@ -26,6 +26,8 @@
         <a class="site-nav-link active" href="/forge" aria-current="page">Metadata Forge</a>
         <a class="site-nav-link" href="/m4b-tool">M4B Tool</a>
         <a class="site-nav-link" href="/organizer">Folder Forge</a>
+        <a class="site-nav-link" href="/library">Library</a>
+        <a class="site-nav-link" href="/auth-setup">Accounts</a>
       </nav>
       <div class="topbar-actions">
         <button id="explanationsToggle" class="header-action" type="button" aria-pressed="false">Collapse explanations</button>
@@ -145,8 +147,54 @@
             <input id="targetPath" list="targetSuggestions" value="/audiobooks" style="flex:1" />
             <datalist id="targetSuggestions"></datalist>
             <button id="targetBrowseBtn" class="secondary" type="button" aria-expanded="false" aria-controls="targetBrowser">Browse</button>
+            <button id="targetScanBtn" class="secondary" type="button">Scan</button>
           </div>
         </label>
+      </div>
+
+      <!-- Folder browser — sits directly below the target path field -->
+      <div id="targetBrowser" class="folder-browser" hidden aria-label="Folder browser">
+        <div class="fb-bar">
+          <button id="targetFbUp" class="icon-button small" type="button" aria-label="Go to parent folder">
+            <svg viewBox="0 0 20 20" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M10 15V5M5 10l5-5 5 5"/></svg>
+          </button>
+          <nav id="targetFbBreadcrumb" class="fb-breadcrumb" aria-label="Current path"></nav>
+          <button id="targetFbHome" class="icon-button small" type="button" aria-label="Go to library root">
+            <svg viewBox="0 0 20 20" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M3 9.5L10 3l7 6.5V17a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V9.5Z"/><path d="M7 18v-6h6v6"/></svg>
+          </button>
+          <button id="targetFbClose" class="icon-button small" type="button" aria-label="Close browser">×</button>
+        </div>
+        <ul id="targetFbList" class="fb-list" role="listbox" aria-label="Subdirectories"></ul>
+        <div class="fb-footer">
+          <span id="targetFbCurrentLabel" class="fb-current-path"></span>
+          <button id="targetFbSelect" type="button">Select this folder</button>
+        </div>
+      </div>
+
+      <!-- Scan summary -->
+      <div id="fixerScanResults" hidden style="margin:8px 0 4px">
+        <div class="stage-grid" style="--stage-cols:3">
+          <div class="stage-card stage-danger">
+            <div class="stage-label">Needs metadata</div>
+            <div id="fixerCountMetadata" class="stage-count">0</div>
+            <p class="stage-desc">No marker yet — fixer hasn't processed these.</p>
+          </div>
+          <div class="stage-card stage-success">
+            <div class="stage-label">Already processed</div>
+            <div id="fixerCountProcessed" class="stage-count">0</div>
+            <p class="stage-desc">Marker present. Use Force to reprocess.</p>
+          </div>
+          <div class="stage-card stage-warning">
+            <div class="stage-label">Needs conversion</div>
+            <div id="fixerCountConversion" class="stage-count">0</div>
+            <p class="stage-desc">Tagged but not yet a clean M4B.</p>
+          </div>
+        </div>
+        <p id="fixerScanMeta" class="note" style="margin:6px 0 0"></p>
+      </div>
+      <p id="fixerScanError" class="note" style="color:var(--danger);margin:6px 0 0" hidden></p>
+
+      <div class="grid">
         <label><span class="field-label">Audible auth file <span class="info-tip" data-tooltip="Path inside the container to the unencrypted Audible authentication JSON used only for catalog searches."></span></span>
           <input id="authFile" value="/auth/audible-metadata.json" />
         </label>
@@ -192,25 +240,6 @@
           <label id="batchAbsProviderLabel" hidden><span class="field-label">ABS source</span>
             <select id="batchAbsProvider"></select>
           </label>
-        </div>
-      </div>
-
-      <!-- Folder browser panel for target path -->
-      <div id="targetBrowser" class="folder-browser" hidden aria-label="Folder browser">
-        <div class="fb-bar">
-          <button id="targetFbUp" class="icon-button small" type="button" aria-label="Go to parent folder">
-            <svg viewBox="0 0 20 20" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M10 15V5M5 10l5-5 5 5"/></svg>
-          </button>
-          <nav id="targetFbBreadcrumb" class="fb-breadcrumb" aria-label="Current path"></nav>
-          <button id="targetFbHome" class="icon-button small" type="button" aria-label="Go to library root">
-            <svg viewBox="0 0 20 20" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M3 9.5L10 3l7 6.5V17a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V9.5Z"/><path d="M7 18v-6h6v6"/></svg>
-          </button>
-          <button id="targetFbClose" class="icon-button small" type="button" aria-label="Close browser">×</button>
-        </div>
-        <ul id="targetFbList" class="fb-list" role="listbox" aria-label="Subdirectories"></ul>
-        <div class="fb-footer">
-          <span id="targetFbCurrentLabel" class="fb-current-path"></span>
-          <button id="targetFbSelect" type="button">Select this folder</button>
         </div>
       </div>
 
@@ -323,6 +352,6 @@
     </section>
   </main>
   <script src="/static/ui-common.js?v=20260620-2"></script>
-  <script src="/static/app.js?v=20260620-6"></script>
+  <script src="/static/app.js?v=20260620-7"></script>
 </body>
 </html>

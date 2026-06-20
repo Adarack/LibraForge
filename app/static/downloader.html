@@ -1,0 +1,485 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>LibraForge - Library Downloader</title>
+  <script src="/static/ui-preferences.js?v=20260620-2"></script>
+  <link rel="stylesheet" href="/static/style.css?v=20260619-6" />
+  <link rel="icon" type="image/png" sizes="64x64" href="/static/favicon-64.png?v=20260613-3" />
+  <link rel="apple-touch-icon" sizes="180x180" href="/static/apple-touch-icon-180.png?v=20260613-3" />
+  <style>
+    .lib-toolbar { display:flex; flex-wrap:wrap; gap:10px; align-items:center; margin:14px 0 10px; }
+    .lib-toolbar input[type=search] { flex:1; min-width:200px; }
+    .lib-grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(220px,1fr)); gap:12px; }
+    .lib-card { display:flex; gap:10px; padding:10px; border:1px solid var(--border); border-radius:10px; background:var(--surface-2,var(--surface)); position:relative; }
+    .lib-card.selected { outline:2px solid var(--accent); }
+    .lib-card.owned { opacity:0.85; }
+    .lib-cover { width:56px; height:56px; flex:0 0 56px; border-radius:6px; object-fit:cover; background:var(--border); }
+    .lib-cover-ph { display:flex; align-items:center; justify-content:center; color:var(--muted); font-size:22px; }
+    .lib-meta { min-width:0; flex:1; }
+    .lib-title { font-weight:600; font-size:0.92em; line-height:1.25; }
+    .lib-author { font-size:0.82em; color:var(--text-soft); margin-top:2px; }
+    .lib-sub { font-size:0.76em; color:var(--muted); margin-top:3px; }
+    .lib-badge { display:inline-block; font-size:0.7em; padding:1px 6px; border-radius:99px; background:var(--border); color:var(--text-soft); margin-top:5px; }
+    .lib-badge.owned { background:#3a2f12; color:#e9c46a; }
+    .lib-check { position:absolute; top:8px; right:8px; }
+    .lib-override { margin-top:6px; font-size:0.78em; }
+    .lib-dup { display:none; gap:6px; margin-top:6px; font-size:0.76em; align-items:center; }
+    .lib-card.override .lib-dup { display:flex; }
+    .lib-empty { padding:24px; color:var(--muted); text-align:center; }
+    .prog-line { font-family:var(--font-mono); font-size:0.8em; white-space:pre-wrap; max-height:240px; overflow:auto; background:var(--surface); border:1px solid var(--border); border-radius:8px; padding:10px; margin-top:10px; }
+  </style>
+</head>
+<body data-page="library">
+  <a class="skip-link" href="#main-content">Skip to content</a>
+
+  <header class="topbar">
+    <div class="topbar-inner">
+      <div class="brand">
+        <img class="app-logo" src="/app-icon.png?v=20260613-3" alt="" aria-hidden="true" />
+        <div class="brand-text">
+          <span class="brand-name">LibraForge</span>
+          <span class="brand-subtitle">Your Audiobookshelf companion tool to forge your library into shape.</span>
+        </div>
+      </div>
+      <nav class="site-nav" aria-label="LibraForge tools">
+        <a class="site-nav-link" href="/">Start Here</a>
+        <a class="site-nav-link" href="/forge">Metadata Forge</a>
+        <a class="site-nav-link" href="/m4b-tool">M4B Tool</a>
+        <a class="site-nav-link" href="/organizer">Folder Forge</a>
+        <a class="site-nav-link active" href="/library" aria-current="page">Library</a>
+        <a class="site-nav-link" href="/auth-setup">Accounts</a>
+      </nav>
+      <div class="topbar-actions">
+        <button id="settingsToggle" class="icon-button" type="button" aria-label="Open global settings" aria-expanded="false" aria-controls="globalSettings">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M19.14 12.94c.04-.31.06-.63.06-.94s-.02-.63-.07-.94l2.03-1.58-1.92-3.32-2.39.96a7.2 7.2 0 0 0-1.63-.94L14.86 3h-3.84l-.36 3.18c-.58.24-1.12.55-1.63.94l-2.39-.96-1.92 3.32 2.03 1.58c-.05.31-.07.64-.07.94s.02.63.07.94l-2.03 1.58 1.92 3.32 2.39-.96c.5.39 1.05.7 1.63.94l.36 3.18h3.84l.36-3.18c.58-.24 1.13-.55 1.63-.94l2.39.96 1.92-3.32-2.02-1.58ZM12.94 15.5a3.5 3.5 0 1 1 0-7 3.5 3.5 0 0 1 0 7Z"/></svg>
+        </button>
+      </div>
+    </div>
+  </header>
+
+  <div id="globalSettings" class="settings-panel" hidden>
+    <div class="settings-panel-head">
+      <div>
+        <span class="eyebrow">Global preferences</span>
+        <h2>Settings</h2>
+      </div>
+      <button id="settingsClose" class="icon-button small" type="button" aria-label="Close global settings">×</button>
+    </div>
+    <div class="settings-grid">
+      <label class="preference-field">Appearance
+        <select id="uiTheme"><option value="system">System</option><option value="dark">Dark</option><option value="light">Light</option></select>
+      </label>
+      <label class="preference-field">Surface palette
+        <select id="uiSurface"></select>
+      </label>
+      <label class="preference-field">Accent color
+        <select id="uiAccent"><option value="sky">Sky</option><option value="violet">Violet</option><option value="emerald">Emerald</option><option value="amber">Amber</option></select>
+      </label>
+      <label class="preference-field">Display density
+        <select id="uiDensity"><option value="comfortable">Comfortable</option><option value="compact">Compact</option></select>
+      </label>
+    </div>
+    <section class="settings-section">
+      <h3>Library</h3>
+      <label class="preference-field">Default root path
+        <input id="defaultRootPath" placeholder="/audiobooks" style="font-family:var(--font-mono);font-size:0.85em" />
+      </label>
+      <div style="margin-top:12px">
+        <p style="font-size:0.85em;color:var(--text-soft);margin:0 0 6px">Folders to ignore <span style="color:var(--muted);font-size:0.9em">(prefix or exact name — e.g. <code>.</code> hides hidden dirs, <code>@eaDir</code> hides Synology system dirs)</span></p>
+        <div id="ignoredFoldersList" style="display:flex;flex-direction:column;gap:4px;margin-bottom:8px"></div>
+        <div style="display:flex;gap:6px">
+          <input id="ignoredFoldersInput" placeholder="folder name or prefix" style="flex:1;font-family:var(--font-mono);font-size:0.85em" />
+          <button id="ignoredFoldersAdd" type="button" class="secondary">Add</button>
+        </div>
+      </div>
+    </section>
+    <section class="settings-section">
+      <h3>Developer</h3>
+      <label class="preference-field"><input type="checkbox" id="debugMode" /> Debug mode</label>
+      <div id="debugLinks" hidden style="margin-top:10px;display:flex;flex-direction:column;gap:6px;font-size:0.9em">
+        <a href="/auth-setup">Auth &amp; provider setup →</a>
+      </div>
+    </section>
+  </div>
+
+  <main class="shell" id="main-content">
+
+    <div id="authBanner" class="callout callout-warning" style="margin-top:4px" hidden>
+      <strong>Audible auth needed.</strong>
+      Downloading your library requires an Audible auth file.
+      <a href="/auth-setup">Set up auth →</a>
+    </div>
+
+    <div class="start-here-hero">
+      <h1>Download from your Audible library</h1>
+      <p>Pull straight from your Audible into a mounted folder. Files are decrypted to standard M4B with their chapters and metadata intact. No metadata fixing needed. Books you already own are flagged so you don't re-download by accident.</p>
+    </div>
+
+    <!-- Target folder -->
+    <div class="pick-row">
+      <input id="folderPath" type="text" list="folderSuggestions"
+             placeholder="/audiobooks/_unorganized"
+             autocomplete="off" spellcheck="false" aria-label="Download target folder" />
+      <datalist id="folderSuggestions"></datalist>
+      <button id="browseBtn" type="button" class="secondary" aria-expanded="false" aria-controls="folderBrowser">Browse</button>
+    </div>
+    <p class="pick-hint">Downloaded books land here, one folder per book. Must be accessible from inside the container.</p>
+
+    <!-- Folder browser panel -->
+    <div id="folderBrowser" class="folder-browser" hidden aria-label="Folder browser">
+      <div class="fb-bar">
+        <button id="fbUp" class="icon-button small" type="button" title="Go to parent folder" aria-label="Go to parent folder">
+          <svg viewBox="0 0 20 20" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M10 15V5M5 10l5-5 5 5"/></svg>
+        </button>
+        <nav id="fbBreadcrumb" class="fb-breadcrumb" aria-label="Current path"></nav>
+        <button id="fbHomeBtn" class="icon-button small" type="button" title="Go to library root" aria-label="Go to library root">
+          <svg viewBox="0 0 20 20" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M3 9.5L10 3l7 6.5V17a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V9.5Z"/><path d="M7 18v-6h6v6"/></svg>
+        </button>
+        <button id="fbClose" class="icon-button small" type="button" aria-label="Close browser">×</button>
+      </div>
+      <ul id="fbList" class="fb-list" role="listbox" aria-label="Subdirectories"></ul>
+      <div class="fb-footer">
+        <span id="fbCurrentLabel" class="fb-current-path"></span>
+        <button id="fbSelect" type="button">Select this folder</button>
+      </div>
+    </div>
+
+    <div style="display:flex;flex-wrap:wrap;gap:16px;align-items:center;margin-top:10px">
+      <label style="display:flex;flex-direction:row;align-items:center;gap:8px;margin:0;cursor:pointer"><input type="checkbox" id="organizeAfter" style="margin:0" /> Automatically organize downloaded books</label>
+      <label style="display:flex;flex-direction:row;align-items:center;gap:8px;margin:0">Quality
+        <select id="quality" style="width:auto;height:42px;margin:0"><option value="High">High</option><option value="Normal">Normal</option></select>
+      </label>
+      <label style="display:flex;flex-direction:row;align-items:center;gap:8px;margin:0">Selected copy rule
+        <select id="dupGlobal" style="width:auto;height:42px;margin:0">
+          <option value="keep_both">Keep both copies</option>
+          <option value="replace">Replace the existing copy</option>
+          <option value="per_item">Choose per item</option>
+        </select>
+      </label>
+      <button id="loadLibraryBtn" type="button">Load my library</button>
+    </div>
+    <p class="pick-hint" id="organizeHint" hidden>After downloading, Folder Forge previews the planned moves and applies them automatically into your destination root.</p>
+
+    <p id="libError" class="note" style="color:var(--danger)" hidden></p>
+
+    <!-- Library browser -->
+    <div id="libSection" hidden>
+      <div class="lib-toolbar">
+        <input type="search" id="libSearch" placeholder="Filter by title or author…" aria-label="Filter library" />
+        <label style="font-size:0.85em;display:flex;flex-direction:row;align-items:center;gap:5px;margin:0"><input type="checkbox" id="hideOwned" style="margin:0" /> Hide owned</label>
+        <button id="selectAllBtn" type="button" class="secondary"
+                title="Selects or clears every title currently shown (respects the search filter and Hide owned). Owned titles are included and will download as a duplicate alongside the existing copy.">Select all shown</button>
+        <span id="selCount" class="note" style="margin:0">0 selected</span>
+        <button id="downloadBtn" type="button" disabled>Download selected</button>
+      </div>
+      <p style="margin:2px 0 12px;display:flex;align-items:center;gap:10px;flex-wrap:wrap;color:var(--text-soft)"><span class="lib-badge owned" style="margin:0;font-size:0.82em;padding:3px 11px">Owned</span> This title is already in your library. Selecting it downloads another copy.</p>
+      <p id="libMeta" class="note" style="margin:0 0 8px"></p>
+      <div id="libGrid" class="lib-grid"></div>
+    </div>
+
+    <!-- Download progress -->
+    <div id="progSection" hidden style="margin-top:18px">
+      <div class="scan-summary-head">
+        <h2>Download progress</h2>
+        <span id="progMeta" class="scan-meta"></span>
+      </div>
+      <div class="progress-bar" style="height:8px;background:var(--border);border-radius:99px;overflow:hidden;margin:8px 0">
+        <div id="progFill" style="height:100%;width:0;background:var(--accent);transition:width .3s"></div>
+      </div>
+      <div id="progLog" class="prog-line"></div>
+    </div>
+
+    <div class="dryrun-notice" style="margin-top:18px">
+      <strong>Heads up.</strong> Downloads consume from your Audible account and write real files. The download itself can't be undone, but nothing in your existing library is moved unless you enable automatic organize.
+    </div>
+
+  </main>
+
+  <script src="/static/ui-common.js?v=20260620-2"></script>
+  <script>
+  (() => {
+    const { initFolderBrowser, escapeHtml } = window.UiCommon;
+    const esc = escapeHtml;
+    const prefs = window.LibraForgePrefs?.get() || {};
+    const AUTH_FILE = "/auth/audible-metadata.json";
+
+    const input = document.getElementById("folderPath");
+    const libError = document.getElementById("libError");
+    let libraryRoot = "/audiobooks";
+    let ownedAsins = new Set();
+    let library = [];        // [{asin,title,author,...,owned,selected,override,dupAction}]
+
+    // ── Folder browser + config ────────────────────────────────────────────
+    function setupBrowser(root) {
+      initFolderBrowser({
+        inputEl: input,
+        datalistEl: document.getElementById("folderSuggestions"),
+        browserEl: document.getElementById("folderBrowser"),
+        browseBtnEl: document.getElementById("browseBtn"),
+        listEl: document.getElementById("fbList"),
+        breadcrumbEl: document.getElementById("fbBreadcrumb"),
+        upBtnEl: document.getElementById("fbUp"),
+        homeBtnEl: document.getElementById("fbHomeBtn"),
+        closeBtnEl: document.getElementById("fbClose"),
+        selectBtnEl: document.getElementById("fbSelect"),
+        currentLabelEl: document.getElementById("fbCurrentLabel"),
+        libraryRoot: root,
+      });
+    }
+
+    fetch("/api/config").then(r => r.json()).then(cfg => {
+      libraryRoot = prefs.defaultRootPath || cfg.audiobooks_root || "/audiobooks";
+      if (!input.value) input.value = libraryRoot;
+      setupBrowser(libraryRoot);
+    }).catch(() => {
+      libraryRoot = prefs.defaultRootPath || "/audiobooks";
+      if (!input.value) input.value = libraryRoot;
+      setupBrowser(libraryRoot);
+    });
+
+    fetch("/api/auth/status").then(r => r.json())
+      .then(d => { if (!d.auth_ok) document.getElementById("authBanner").hidden = false; })
+      .catch(() => {});
+
+    // ── Organize toggle hint ───────────────────────────────────────────────
+    const organizeAfter = document.getElementById("organizeAfter");
+    organizeAfter.addEventListener("change", () => {
+      document.getElementById("organizeHint").hidden = !organizeAfter.checked;
+    });
+
+    // ── Load library ───────────────────────────────────────────────────────
+    const loadBtn = document.getElementById("loadLibraryBtn");
+    loadBtn.addEventListener("click", loadLibrary);
+
+    function loadLibrary() {
+      libError.hidden = true;
+      loadBtn.disabled = true;
+      loadBtn.textContent = "Loading…";
+      const ownedReq = fetch(`/api/library/owned-asins?root=${encodeURIComponent(libraryRoot)}`)
+        .then(r => r.ok ? r.json() : { asins: [] })
+        .catch(() => ({ asins: [] }));
+      const listReq = fetch(`/api/library/list?auth_file=${encodeURIComponent(AUTH_FILE)}`)
+        .then(r => { if (!r.ok) return r.json().then(e => Promise.reject(e.detail || "Library fetch failed")); return r.json(); });
+
+      Promise.all([listReq, ownedReq])
+        .then(([list, owned]) => {
+          ownedAsins = new Set((owned.asins || []).map(a => a.toUpperCase()));
+          library = (list.items || []).map(it => ({
+            ...it,
+            owned: ownedAsins.has((it.asin || "").toUpperCase()),
+            selected: false,
+            override: false,
+            dupAction: "new",
+          }));
+          document.getElementById("libSection").hidden = false;
+          renderLibrary();
+        })
+        .catch(err => {
+          libError.textContent = typeof err === "string" ? err : "Could not load your Audible library.";
+          libError.hidden = false;
+        })
+        .finally(() => { loadBtn.disabled = false; loadBtn.textContent = "Reload library"; });
+    }
+
+    // ── Render ─────────────────────────────────────────────────────────────
+    const grid = document.getElementById("libGrid");
+    const searchEl = document.getElementById("libSearch");
+    const hideOwnedEl = document.getElementById("hideOwned");
+    const dupGlobalEl = document.getElementById("dupGlobal");
+    // "keep_both" | "replace" apply to every duplicate; "per_item" uses each card's own choice.
+    const dupMode = () => dupGlobalEl.value;
+
+    function visibleItems() {
+      const q = searchEl.value.trim().toLowerCase();
+      return library.filter(it => {
+        if (hideOwnedEl.checked && it.owned) return false;
+        if (!q) return true;
+        const hay = `${it.title} ${(it.authors || []).join(" ")} ${it.series_title}`.toLowerCase();
+        return hay.includes(q);
+      });
+    }
+
+    function fmtRuntime(min) {
+      if (!min) return "";
+      const h = Math.floor(min / 60), m = min % 60;
+      return h ? `${h}h ${m}m` : `${m}m`;
+    }
+
+    function renderLibrary() {
+      const items = visibleItems();
+      const ownedCount = library.filter(i => i.owned).length;
+      document.getElementById("libMeta").textContent =
+        `${library.length} titles in your library · ${ownedCount} already owned · showing ${items.length}`;
+      if (!items.length) {
+        grid.innerHTML = '<div class="lib-empty">No titles match.</div>';
+        updateSelCount();
+        return;
+      }
+      grid.innerHTML = items.map(cardHtml).join("");
+      updateSelCount();
+    }
+
+    function cardHtml(it) {
+      const author = (it.authors || []).join(", ");
+      const series = it.series_title
+        ? `${esc(it.series_title)}${it.series_sequence ? " #" + esc(it.series_sequence) : ""}` : "";
+      const runtime = fmtRuntime(it.runtime_minutes);
+      const sub = [series, runtime].filter(Boolean).join(" · ");
+      const checkable = !it.owned || it.override;
+      const cls = `lib-card${it.selected ? " selected" : ""}${it.owned ? " owned" : ""}${it.override ? " override" : ""}`;
+      const cover = it.cover_url
+        ? `<img class="lib-cover" src="${esc(it.cover_url)}" alt="" loading="lazy" referrerpolicy="no-referrer" onerror="this.outerHTML='<div class=\\'lib-cover lib-cover-ph\\'>♪</div>'" />`
+        : `<div class="lib-cover lib-cover-ph">♪</div>`;
+      return `
+        <div class="${cls}" data-asin="${esc(it.asin)}">
+          ${cover}
+          <div class="lib-meta">
+            <div class="lib-title">${esc(it.title)}</div>
+            ${author ? `<div class="lib-author">${esc(author)}</div>` : ""}
+            ${sub ? `<div class="lib-sub">${sub}</div>` : ""}
+            ${it.owned ? `<span class="lib-badge owned">Owned</span>` : ""}
+            ${it.owned && !it.override ? `<div class="lib-override"><a href="#" data-act="override" data-asin="${esc(it.asin)}">Download anyway →</a></div>` : ""}
+            ${(dupMode() === "per_item" && it.owned) ? `<div class="lib-dup">
+              <span>If exists:</span>
+              <select data-act="dup" data-asin="${esc(it.asin)}">
+                <option value="keep_both"${it.dupAction === "keep_both" ? " selected" : ""}>Keep both</option>
+                <option value="replace"${it.dupAction === "replace" ? " selected" : ""}>Replace</option>
+              </select>
+            </div>` : ""}
+          </div>
+          <input class="lib-check" type="checkbox" data-act="select" data-asin="${esc(it.asin)}"
+                 ${it.selected ? "checked" : ""} ${checkable ? "" : "disabled"}
+                 aria-label="Select ${esc(it.title)}" />
+        </div>`;
+    }
+
+    function byAsin(asin) { return library.find(i => i.asin === asin); }
+
+    grid.addEventListener("click", e => {
+      const override = e.target.closest('[data-act="override"]');
+      if (override) {
+        e.preventDefault();
+        const it = byAsin(override.dataset.asin);
+        if (it) { it.override = true; it.dupAction = "keep_both"; renderLibrary(); }
+      }
+    });
+    grid.addEventListener("change", e => {
+      const sel = e.target.closest('[data-act="select"]');
+      if (sel) {
+        const it = byAsin(sel.dataset.asin);
+        if (it) { it.selected = sel.checked; sel.closest(".lib-card").classList.toggle("selected", sel.checked); updateSelCount(); }
+        return;
+      }
+      const dup = e.target.closest('[data-act="dup"]');
+      if (dup) { const it = byAsin(dup.dataset.asin); if (it) it.dupAction = dup.value; }
+    });
+
+    searchEl.addEventListener("input", renderLibrary);
+    hideOwnedEl.addEventListener("change", renderLibrary);
+    dupGlobalEl.addEventListener("change", renderLibrary);
+
+    const selectAllBtn = document.getElementById("selectAllBtn");
+    selectAllBtn.addEventListener("click", () => {
+      const items = visibleItems();
+      if (!items.length) return;
+      const allSel = items.every(it => it.selected);
+      items.forEach(it => {
+        it.selected = !allSel;
+        // Selecting an owned title opts it in for a duplicate download (same as "Download anyway").
+        if (it.owned) {
+          if (!allSel) { it.override = true; if (it.dupAction === "new") it.dupAction = "keep_both"; }
+          else { it.override = false; it.dupAction = "new"; }
+        }
+      });
+      renderLibrary();
+    });
+
+    function updateSelectAllBtn() {
+      const items = visibleItems();
+      const allSel = items.length > 0 && items.every(it => it.selected);
+      selectAllBtn.disabled = items.length === 0;
+      selectAllBtn.textContent = allSel ? "Deselect all shown" : "Select all shown";
+    }
+
+    const downloadBtn = document.getElementById("downloadBtn");
+    function updateSelCount() {
+      const n = library.filter(i => i.selected).length;
+      document.getElementById("selCount").textContent = `${n} selected`;
+      downloadBtn.disabled = n === 0;
+      updateSelectAllBtn();
+    }
+
+    // ── Download ───────────────────────────────────────────────────────────
+    downloadBtn.addEventListener("click", startDownload);
+
+    function startDownload() {
+      const chosen = library.filter(i => i.selected);
+      if (!chosen.length) return;
+      const target = input.value.trim();
+      if (!target) { libError.textContent = "Choose a download folder first."; libError.hidden = false; return; }
+      libError.hidden = true;
+      downloadBtn.disabled = true;
+      const body = {
+        auth_file: AUTH_FILE,
+        target_path: target,
+        quality: document.getElementById("quality").value,
+        organize: organizeAfter.checked,
+        items: chosen.map(it => ({
+          asin: it.asin,
+          title: it.title,
+          author: (it.authors || []).join(", "),
+          dup_action: it.owned ? (dupMode() === "per_item" ? it.dupAction : dupMode()) : "new",
+        })),
+      };
+      fetch("/api/library/download/runs", {
+        method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body),
+      })
+        .then(r => { if (!r.ok) return r.json().then(e => Promise.reject(e.detail || "Failed to start")); return r.json(); })
+        .then(data => pollRun(data.id))
+        .catch(err => {
+          libError.textContent = typeof err === "string" ? err : "Could not start download.";
+          libError.hidden = false;
+          updateSelCount();
+        });
+    }
+
+    function pollRun(runId) {
+      document.getElementById("progSection").hidden = false;
+      document.getElementById("progSection").scrollIntoView({ behavior: "smooth", block: "nearest" });
+      const fill = document.getElementById("progFill");
+      const meta = document.getElementById("progMeta");
+      const logEl = document.getElementById("progLog");
+      const tick = () => {
+        fetch(`/api/runs/${runId}`).then(r => r.json()).then(s => {
+          fill.style.width = `${s.percent || 0}%`;
+          meta.textContent = s.phase_detail || s.phase_label || s.status;
+          logEl.textContent = (s.tail || []).join("\n");
+          logEl.scrollTop = logEl.scrollHeight;
+          const done = ["completed", "completed_with_errors", "error", "cancelled"].includes(s.status);
+          if (!done) { setTimeout(tick, 1500); return; }
+          const st = s.stats || {};
+          let summary = `${st.downloaded || 0} downloaded`;
+          if (st.failed) summary += `, ${st.failed} failed`;
+          if (s.status === "error") summary = `Error: ${s.error || "unknown"}`;
+          meta.textContent = summary;
+          downloadBtn.disabled = false;
+          // Refresh owned set so completed books flip to "Owned".
+          fetch(`/api/library/owned-asins?root=${encodeURIComponent(libraryRoot)}`)
+            .then(r => r.json()).then(owned => {
+              ownedAsins = new Set((owned.asins || []).map(a => a.toUpperCase()));
+              library.forEach(it => {
+                it.owned = ownedAsins.has((it.asin || "").toUpperCase());
+                if (it.owned) { it.selected = false; it.override = false; }
+              });
+              renderLibrary();
+            }).catch(() => {});
+        }).catch(() => setTimeout(tick, 2500));
+      };
+      tick();
+    }
+  })();
+  </script>
+</body>
+</html>
