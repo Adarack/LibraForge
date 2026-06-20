@@ -57,6 +57,10 @@ M4B_DISCOVERY_CACHE = REPORTS_DIR / "m4b-discovery-cache.json"
 M4B_DISCOVERY_CACHE_LOCK = threading.Lock()
 
 DEFAULT_AUTH_FILE = Path("/auth/audible-metadata.json")
+# Saved Audible accounts live here, one <user_id>.json auth file plus a
+# <user_id>.meta.json sidecar holding the user-given flavor name. The active
+# account is whichever one currently mirrors DEFAULT_AUTH_FILE.
+ACCOUNTS_DIR = Path("/auth/accounts")
 ABS_AGG_CONFIG_FILE = APP_ROOT.parent / "config" / "abs-agg.json"
 
 # Fallback provider catalog used when abs-agg is unreachable.
@@ -3343,10 +3347,193 @@ def auth_setup_page() -> HTMLResponse:
     return HTMLResponse((STATIC_DIR / "auth-setup.html").read_text(encoding="utf-8"))
 
 
+# ---------------------------------------------------------------------------
+# Audible account management (multi-account switcher)
+# ---------------------------------------------------------------------------
+
+_ACCOUNTS_LOCK = threading.Lock()
+
+
+def _read_auth_identity(path: Path) -> dict[str, Any] | None:
+    """Identity fields from an Audible auth JSON, read offline (no network)."""
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except Exception:
+        return None
+    cust = data.get("customer_info") or {}
+    user_id = cust.get("user_id")
+    if not user_id:
+        return None
+    return {
+        "user_id": str(user_id),
+        "name": cust.get("name") or cust.get("given_name") or "",
+        "given_name": cust.get("given_name") or "",
+        "locale_code": data.get("locale_code") or "us",
+    }
+
+
+def _account_auth_path(user_id: str) -> Path:
+    return ACCOUNTS_DIR / f"{user_id}.json"
+
+
+def _account_meta_path(user_id: str) -> Path:
+    return ACCOUNTS_DIR / f"{user_id}.meta.json"
+
+
+def _read_account_meta(user_id: str) -> dict[str, Any]:
+    try:
+        return json.loads(_account_meta_path(user_id).read_text(encoding="utf-8"))
+    except Exception:
+        return {}
+
+
+def _write_account_meta(user_id: str, flavor_name: str) -> None:
+    meta = _read_account_meta(user_id)
+    meta["flavor_name"] = flavor_name
+    meta.setdefault("added_at", time.time())
+    _account_meta_path(user_id).write_text(json.dumps(meta, indent=2), encoding="utf-8")
+
+
+def _active_user_id() -> str | None:
+    ident = _read_auth_identity(DEFAULT_AUTH_FILE) if DEFAULT_AUTH_FILE.exists() else None
+    return ident["user_id"] if ident else None
+
+
+def _sync_accounts() -> None:
+    """Ensure the accounts folder exists and the active auth file is managed."""
+    ACCOUNTS_DIR.mkdir(parents=True, exist_ok=True)
+    ident = _read_auth_identity(DEFAULT_AUTH_FILE) if DEFAULT_AUTH_FILE.exists() else None
+    if not ident:
+        return
+    uid = ident["user_id"]
+    if not _account_auth_path(uid).exists():
+        shutil.copy2(DEFAULT_AUTH_FILE, _account_auth_path(uid))
+    if not _account_meta_path(uid).exists():
+        _write_account_meta(uid, ident["name"] or "My account")
+
+
+def _account_summary(user_id: str, active_id: str | None) -> dict[str, Any] | None:
+    ident = _read_auth_identity(_account_auth_path(user_id))
+    if not ident:
+        return None
+    loc = ident["locale_code"]
+    return {
+        "user_id": user_id,
+        "flavor_name": _read_account_meta(user_id).get("flavor_name") or ident["name"] or user_id,
+        "name": ident["name"],
+        "marketplace": _LOCALE_NAMES.get(loc, loc.upper()),
+        "locale_code": loc,
+        "active": user_id == active_id,
+    }
+
+
+def _list_accounts() -> list[dict[str, Any]]:
+    active = _active_user_id()
+    out: list[dict[str, Any]] = []
+    for p in sorted(ACCOUNTS_DIR.glob("*.json")):
+        if p.name.endswith(".meta.json"):
+            continue
+        summ = _account_summary(p.stem, active)
+        if summ:
+            out.append(summ)
+    out.sort(key=lambda a: (not a["active"], a["flavor_name"].lower()))
+    return out
+
+
+def _remove_account_files(user_id: str) -> None:
+    _account_auth_path(user_id).unlink(missing_ok=True)
+    _account_meta_path(user_id).unlink(missing_ok=True)
+
+
 @app.get("/api/auth/status")
 def auth_status() -> dict[str, Any]:
     exists = DEFAULT_AUTH_FILE.exists() and DEFAULT_AUTH_FILE.stat().st_size > 10
-    return {"auth_ok": exists, "auth_file": str(DEFAULT_AUTH_FILE)}
+    name = ""
+    if exists:
+        with _ACCOUNTS_LOCK:
+            _sync_accounts()
+            uid = _active_user_id()
+            if uid:
+                name = _read_account_meta(uid).get("flavor_name") or ""
+    return {"auth_ok": exists, "auth_file": str(DEFAULT_AUTH_FILE), "active_name": name}
+
+
+@app.get("/api/auth/accounts")
+def auth_accounts() -> dict[str, Any]:
+    with _ACCOUNTS_LOCK:
+        _sync_accounts()
+        return {"accounts": _list_accounts()}
+
+
+class AccountRenameRequest(BaseModel):
+    flavor_name: str
+
+
+@app.patch("/api/auth/accounts/{user_id}")
+def auth_account_rename(user_id: str, req: AccountRenameRequest) -> dict[str, Any]:
+    name = (req.flavor_name or "").strip()[:80]
+    if not name:
+        raise HTTPException(status_code=400, detail="Account name cannot be empty.")
+    with _ACCOUNTS_LOCK:
+        if not _account_auth_path(user_id).exists():
+            raise HTTPException(status_code=404, detail="Account not found.")
+        _write_account_meta(user_id, name)
+        return _account_summary(user_id, _active_user_id()) or {}
+
+
+@app.post("/api/auth/accounts/{user_id}/activate")
+def auth_account_activate(user_id: str) -> dict[str, Any]:
+    with _ACCOUNTS_LOCK:
+        src = _account_auth_path(user_id)
+        if not src.exists():
+            raise HTTPException(status_code=404, detail="Account not found.")
+        DEFAULT_AUTH_FILE.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(src, DEFAULT_AUTH_FILE)
+        return {"ok": True, "active": _account_summary(user_id, user_id)}
+
+
+def _deregister_or_502(path: Path) -> None:
+    """Deregister the device with Audible; raise HTTP 502 with a flag on failure."""
+    try:
+        audible.Authenticator.from_file(str(path)).deregister_device()
+    except Exception as exc:  # noqa: BLE001
+        raise HTTPException(
+            status_code=502,
+            detail={"deregister_failed": True, "message": f"Could not deregister with Audible: {exc}"},
+        ) from exc
+
+
+class DisconnectRequest(BaseModel):
+    force: bool = False
+
+
+@app.post("/api/auth/disconnect")
+def auth_disconnect(req: DisconnectRequest) -> dict[str, Any]:
+    with _ACCOUNTS_LOCK:
+        uid = _active_user_id()
+        if not uid:
+            raise HTTPException(status_code=400, detail="No active account to disconnect.")
+        if not req.force:
+            _deregister_or_502(DEFAULT_AUTH_FILE)
+        _remove_account_files(uid)
+        DEFAULT_AUTH_FILE.unlink(missing_ok=True)
+        return {"ok": True}
+
+
+@app.delete("/api/auth/accounts/{user_id}")
+def auth_account_remove(user_id: str, force: bool = False) -> dict[str, Any]:
+    with _ACCOUNTS_LOCK:
+        path = _account_auth_path(user_id)
+        if not path.exists():
+            raise HTTPException(status_code=404, detail="Account not found.")
+        if user_id == _active_user_id():
+            raise HTTPException(
+                status_code=400, detail="That is the active account — use Disconnect instead."
+            )
+        if not force:
+            _deregister_or_502(path)
+        _remove_account_files(user_id)
+        return {"ok": True}
 
 
 @app.get("/api/auth/locales")
@@ -3356,7 +3543,7 @@ def auth_locales() -> dict[str, Any]:
 
 class AuthLoginStartRequest(BaseModel):
     locale: str = "us"
-    auth_file: str = str(DEFAULT_AUTH_FILE)
+    flavor_name: str = ""
 
 
 @app.post("/api/auth/login/start")
@@ -3367,6 +3554,10 @@ def auth_login_start(req: AuthLoginStartRequest) -> dict[str, Any]:
 
     if req.locale not in _LOCALE_NAMES:
         raise HTTPException(status_code=400, detail=f"Unknown locale: {req.locale}")
+
+    flavor_name = (req.flavor_name or "").strip()[:80]
+    if not flavor_name:
+        raise HTTPException(status_code=400, detail="Enter a name for this account first.")
 
     try:
         locale_obj = _Locale(req.locale)
@@ -3387,7 +3578,7 @@ def auth_login_start(req: AuthLoginStartRequest) -> dict[str, Any]:
             "serial": serial,
             "domain": locale_obj.domain,
             "locale": req.locale,
-            "auth_file": req.auth_file,
+            "flavor_name": flavor_name,
         }
 
     return {"oauth_url": oauth_url}
@@ -3435,21 +3626,450 @@ def auth_login_complete(req: AuthLoginCompleteRequest) -> dict[str, Any]:
     except Exception as exc:
         raise HTTPException(status_code=400, detail=f"Audible registration failed: {exc}") from exc
 
-    # Persist as an unencrypted JSON auth file.
+    # Persist as a managed account (unencrypted JSON), keyed by Audible user_id, then
+    # make it the active account. Saving to the side folder never clobbers the active
+    # auth file mid-login.
     try:
         auth = audible.Authenticator()
         auth.locale = _Locale(pending["locale"])
         auth._update_attrs(**reg_result)
-        auth_file = Path(pending["auth_file"])
-        auth_file.parent.mkdir(parents=True, exist_ok=True)
-        auth.to_file(str(auth_file), encryption=False)
-    except Exception as exc:
+        with _ACCOUNTS_LOCK:
+            ACCOUNTS_DIR.mkdir(parents=True, exist_ok=True)
+            # Write to a temp file first so we can read the user_id back, then rename.
+            tmp = ACCOUNTS_DIR / f".pending-{int(time.time() * 1000)}.json"
+            auth.to_file(str(tmp), encryption=False)
+            ident = _read_auth_identity(tmp)
+            if not ident:
+                tmp.unlink(missing_ok=True)
+                raise RuntimeError("Audible did not return a usable account profile.")
+            uid = ident["user_id"]
+            tmp.replace(_account_auth_path(uid))
+            _write_account_meta(uid, pending["flavor_name"] or ident["name"] or "My account")
+            DEFAULT_AUTH_FILE.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(_account_auth_path(uid), DEFAULT_AUTH_FILE)
+    except HTTPException:
+        raise
+    except Exception as exc:  # noqa: BLE001
         raise HTTPException(status_code=500, detail=f"Failed to save auth file: {exc}") from exc
 
     with _pending_login_lock:
         _pending_login = None
 
-    return {"ok": True, "auth_file": str(pending["auth_file"])}
+    return {"ok": True, "user_id": uid, "flavor_name": pending["flavor_name"], "name": ident["name"]}
+
+
+# ---------------------------------------------------------------------------
+# Audible Library Downloader
+# ---------------------------------------------------------------------------
+
+_LIBRARY_RESPONSE_GROUPS = ",".join(
+    [
+        "product_desc",
+        "product_attrs",
+        "contributors",
+        "media",
+        "series",
+        "relationships",
+    ]
+)
+
+# Cached owned-ASIN scans keyed by resolved root path: (monotonic_ts, fingerprint, set[str]).
+_OWNED_ASIN_CACHE: dict[str, tuple[float, str, set[str]]] = {}
+_OWNED_ASIN_CACHE_TTL = 1800  # 30 minutes
+_OWNED_ASIN_LOCK = threading.Lock()
+_FILENAME_ASIN_RE = re.compile(r"\[(?:ASIN\.)?([Bb]0[A-Z0-9]{8})\]", re.IGNORECASE)
+# Audible's CloudFront CDN 403s the default python-httpx User-Agent; a client-like
+# UA is required to fetch the content stream.
+_AUDIBLE_DOWNLOAD_UA = "Audible/671 CFNetwork/1240.0.4 Darwin/20.6.0"
+
+
+class LibraryListResponse(BaseModel):
+    items: list[dict[str, Any]]
+    total: int
+
+
+class LibraryDownloadItem(BaseModel):
+    asin: str
+    title: str = ""
+    author: str = ""
+    # "new" (not owned), "replace" (overwrite existing target folder), "keep_both" (suffix folder)
+    dup_action: str = "new"
+
+
+class LibraryDownloadRequest(BaseModel):
+    auth_file: str = Field(default="/auth/audible-metadata.json")
+    target_path: str
+    items: list[LibraryDownloadItem]
+    quality: str = "High"
+    organize: bool = False
+    destination_root: str = Field(default="/audiobooks")
+
+
+def _read_asin_from_audio(audio_file: Path) -> str:
+    """Return the embedded ASIN for an audio file, or '' if none."""
+    try:
+        suffix = audio_file.suffix.lower()
+        if suffix in (".m4b", ".m4a", ".mp4"):
+            tags = MP4(str(audio_file)).tags
+            if tags:
+                for key in _ASIN_TAG_KEYS:
+                    raw = tags.get(key, [])
+                    if raw:
+                        val = raw[0]
+                        text = (
+                            bytes(val).decode("utf-8", errors="ignore")
+                            if isinstance(val, (bytes, bytearray, MP4FreeForm))
+                            else str(val)
+                        )
+                        if text.strip():
+                            return text.strip().upper()
+        elif suffix == ".mp3":
+            from mutagen.id3 import ID3  # noqa: PLC0415
+
+            t = ID3(str(audio_file))
+            for k in t.keys():
+                if "asin" in k.lower():
+                    frame = t.get(k)
+                    text = "".join(getattr(frame, "text", []) or []) if frame else ""
+                    if text.strip():
+                        return text.strip().upper()
+    except Exception:
+        pass
+    return ""
+
+
+def _scan_owned_asins(root: Path) -> set[str]:
+    """Collect every ASIN already present under root (tags + [B0XXXXXXXX] filenames)."""
+    owned: set[str] = set()
+    for folder in _find_book_folders(root):
+        try:
+            audio = _book_audio_files(folder)
+        except PermissionError:
+            continue
+        for audio_file in audio:
+            m = _FILENAME_ASIN_RE.search(audio_file.name)
+            if m:
+                owned.add(m.group(1).upper())
+        if audio:
+            asin = _read_asin_from_audio(audio[0])
+            if asin:
+                owned.add(asin)
+    return owned
+
+
+def _owned_asins_cached(root: Path) -> set[str]:
+    key = str(root)
+    fingerprint = _library_fingerprint(root)
+    with _OWNED_ASIN_LOCK:
+        entry = _OWNED_ASIN_CACHE.get(key)
+        if entry is not None:
+            ts, cached_fp, data = entry
+            if time.monotonic() - ts < _OWNED_ASIN_CACHE_TTL and cached_fp == fingerprint:
+                return data
+    data = _scan_owned_asins(root)
+    with _OWNED_ASIN_LOCK:
+        _OWNED_ASIN_CACHE[key] = (time.monotonic(), fingerprint, data)
+    return data
+
+
+def _library_item_to_dict(item: dict[str, Any]) -> dict[str, Any]:
+    authors = [a.get("name", "") for a in (item.get("authors") or []) if a.get("name")]
+    narrators = [n.get("name", "") for n in (item.get("narrators") or []) if n.get("name")]
+    series_list = item.get("series") or item.get("relationships") or []
+    series_title = ""
+    series_seq = ""
+    for s in series_list:
+        if s.get("relationship_type") in (None, "series") and s.get("title"):
+            series_title = s.get("title", "")
+            series_seq = str(s.get("sequence", "") or "")
+            break
+    images = item.get("product_images") or {}
+    cover_url = ""
+    for size in ("500", "1024", "300", "252", "180"):
+        if images.get(size):
+            cover_url = images[size]
+            break
+    runtime = item.get("runtime_length_min")
+    return {
+        "asin": item.get("asin", ""),
+        "title": item.get("title", ""),
+        "subtitle": item.get("subtitle", ""),
+        "authors": authors,
+        "narrators": narrators,
+        "series_title": series_title,
+        "series_sequence": series_seq,
+        "runtime_minutes": runtime,
+        "cover_url": cover_url,
+        "purchase_date": item.get("purchase_date", ""),
+        "release_date": item.get("release_date", ""),
+        "is_finished": bool(item.get("is_finished", False)),
+    }
+
+
+@app.get("/api/library/list")
+def library_list(
+    auth_file: str = "/auth/audible-metadata.json", num_results: int = 1000
+) -> LibraryListResponse:
+    if not Path(auth_file).exists():
+        raise HTTPException(status_code=400, detail="No Audible auth file. Complete auth setup first.")
+    try:
+        auth = audible.Authenticator.from_file(auth_file)
+        client = audible.Client(auth=auth)
+        resp = client.get(
+            "library",
+            params={
+                "num_results": max(1, min(num_results, 1000)),
+                "response_groups": _LIBRARY_RESPONSE_GROUPS,
+                "sort_by": "-PurchaseDate",
+            },
+        )
+    except Exception as exc:
+        raise HTTPException(status_code=502, detail=f"Audible library fetch failed: {exc}") from exc
+    raw_items = resp.get("items", []) or []
+    items = [_library_item_to_dict(i) for i in raw_items if i.get("asin")]
+    return LibraryListResponse(items=items, total=len(items))
+
+
+@app.get("/api/library/owned-asins")
+def library_owned_asins(root: str) -> dict[str, Any]:
+    p = Path(root)
+    if not p.is_dir():
+        raise HTTPException(status_code=404, detail=f"Directory not found: {root}")
+    asins = sorted(_owned_asins_cached(p))
+    return {"root": str(p), "asins": asins, "count": len(asins)}
+
+
+def _safe_component(text: str) -> str:
+    """Filesystem-safe single path component."""
+    cleaned = re.sub(r'[<>:"/\\|?*\x00-\x1f]', "", text or "").strip().rstrip(". ")
+    cleaned = re.sub(r"\s+", " ", cleaned)
+    return cleaned[:150] or "audiobook"
+
+
+def _ffmpeg_decrypt(
+    src: Path,
+    out: Path,
+    log,
+    *,
+    activation_bytes: str | None = None,
+    key: str | None = None,
+    iv: str | None = None,
+) -> None:
+    """Decrypt an Audible download to M4B.
+
+    AAX (drm_type Adrm) decrypts with ``-activation_bytes``; AAXC (Mpeg) uses the
+    per-file voucher ``-audible_key``/``-audible_iv``. Only the audio and cover
+    streams are mapped — copying every stream pulls in a timed-text/data stream
+    the mp4 muxer rejects. Chapters survive as container metadata regardless.
+    """
+    decrypt_args: list[str] = []
+    if activation_bytes:
+        decrypt_args = ["-activation_bytes", activation_bytes]
+    elif key and iv:
+        decrypt_args = ["-audible_key", key, "-audible_iv", iv]
+    cmd = [
+        "ffmpeg",
+        "-y",
+        *decrypt_args,
+        "-i",
+        str(src),
+        "-map",
+        "0:a",
+        "-map",
+        "0:v?",
+        "-c",
+        "copy",
+        "-movflags",
+        "+faststart",
+        str(out),
+    ]
+    log(f"  ffmpeg decrypt -> {out.name}")
+    proc = subprocess.run(cmd, capture_output=True, text=True)
+    if proc.returncode != 0:
+        tail = (proc.stderr or "")[-800:]
+        raise RuntimeError(f"ffmpeg decryption failed: {tail}")
+
+
+def _embed_asin_tag(m4b_path: Path, asin: str) -> None:
+    try:
+        mp4 = MP4(str(m4b_path))
+        if mp4.tags is None:
+            mp4.add_tags()
+        mp4.tags[_ASIN_TAG_KEYS[0]] = [MP4FreeForm(asin.encode("utf-8"))]
+        mp4.save()
+    except Exception:
+        pass
+
+
+def run_download_worker(run_id: str, req: LibraryDownloadRequest) -> None:
+    state = runs[run_id]
+    state.status = "running"
+    state.log_path = REPORTS_DIR / f"{run_id}.log.txt"
+    log_lines: list[str] = []
+
+    def log(msg: str) -> None:
+        log_lines.append(msg)
+        state.lines_tail = log_lines[-40:]
+        try:
+            state.log_path.write_text("\n".join(log_lines) + "\n", encoding="utf-8")  # type: ignore[union-attr]
+        except Exception:
+            pass
+
+    target = Path(req.target_path)
+    completed: list[Path] = []
+    failures: list[dict[str, str]] = []
+    try:
+        target.mkdir(parents=True, exist_ok=True)
+        auth = audible.Authenticator.from_file(req.auth_file)
+        client = audible.Client(auth=auth)
+        from audible.aescipher import decrypt_voucher_from_licenserequest  # noqa: PLC0415
+
+        total = len(req.items)
+        state.total = total
+        set_run_phase(state, "downloading", "Downloading", f"0 of {total}")
+        for idx, item in enumerate(req.items, 1):
+            state.current = idx
+            state.current_file = item.title or item.asin
+            state.percent = round((idx - 1) / total * 100, 1) if total else 0.0
+            set_run_phase(state, "downloading", "Downloading", f"{idx} of {total}: {state.current_file}")
+            log(f"[{idx}/{total}] {item.title or item.asin} ({item.asin})")
+            try:
+                folder_name = _safe_component(
+                    f"{item.author} - {item.title}".strip(" -") or item.title or item.asin
+                )
+                folder_name = f"{folder_name} [{item.asin}]"
+                book_dir = target / folder_name
+                if book_dir.exists():
+                    if item.dup_action == "keep_both":
+                        n = 2
+                        while (target / f"{folder_name} ({n})").exists():
+                            n += 1
+                        book_dir = target / f"{folder_name} ({n})"
+                    elif item.dup_action == "replace":
+                        shutil.rmtree(book_dir, ignore_errors=True)
+                book_dir.mkdir(parents=True, exist_ok=True)
+
+                lr = client.post(
+                    f"content/{item.asin}/licenserequest",
+                    body={
+                        "supported_drm_types": ["Mpeg", "Adrm"],
+                        "quality": req.quality,
+                        "consumption_type": "Download",
+                        "response_groups": "last_position_heard,pdf_url,content_reference,chapter_info",
+                    },
+                )
+                content_license = lr.get("content_license", {})
+                content_url = (
+                    content_license.get("content_metadata", {})
+                    .get("content_url", {})
+                    .get("offline_url")
+                )
+                if not content_url:
+                    raise RuntimeError(
+                        content_license.get("message")
+                        or content_license.get("status_code")
+                        or "No download URL returned (title may not be downloadable)."
+                    )
+
+                # AAX (Adrm) decrypts with account activation_bytes; AAXC (Mpeg) with a
+                # per-file voucher. Resolve the right material up front so a decryption
+                # failure doesn't leave the encrypted source on disk.
+                drm_type = content_license.get("drm_type", "")
+                base = _safe_component(item.title or item.asin)
+                if drm_type == "Adrm":
+                    decrypt_kwargs = {"activation_bytes": auth.get_activation_bytes()}
+                    enc_path = book_dir / f"{base}.aax"
+                else:
+                    voucher = decrypt_voucher_from_licenserequest(auth, lr)
+                    decrypt_kwargs = {"key": voucher["key"], "iv": voucher["iv"]}
+                    enc_path = book_dir / f"{base}.aaxc"
+
+                log(f"  downloading encrypted stream ({drm_type or 'unknown'} DRM)...")
+                with client.raw_request(  # type: ignore[union-attr]
+                    "GET",
+                    content_url,
+                    stream=True,
+                    headers={"User-Agent": _AUDIBLE_DOWNLOAD_UA},
+                ) as resp:
+                    with open(enc_path, "wb") as fh:
+                        for chunk in resp.iter_bytes(chunk_size=1024 * 1024):
+                            fh.write(chunk)
+
+                out_m4b = book_dir / f"{base}.m4b"
+                _ffmpeg_decrypt(enc_path, out_m4b, log, **decrypt_kwargs)
+                enc_path.unlink(missing_ok=True)
+                _embed_asin_tag(out_m4b, item.asin)
+                # No sidecar cover.jpg: Audible embeds full-quality cover art in the M4B.
+
+                completed.append(book_dir)
+                log(f"  done -> {out_m4b}")
+            except Exception as exc:  # noqa: BLE001
+                failures.append({"asin": item.asin, "title": item.title, "error": str(exc)})
+                log(f"  FAILED: {exc}")
+            state.percent = round(idx / total * 100, 1) if total else 100.0
+
+        state.stats["downloaded"] = len(completed)
+        state.stats["failed"] = len(failures)
+        state.stats["failures"] = failures
+
+        if req.organize and completed:
+            set_run_phase(state, "organizing", "Organizing", "Dry-run preview")
+            log("Organizing downloaded books (dry-run preview)...")
+            org_req = OrganizerRunRequest(
+                root_path=str(target),
+                destination_root=req.destination_root,
+                apply=False,
+            )
+            preview = subprocess.run(
+                build_organizer_command(org_req), capture_output=True, text=True
+            )
+            state.stats["organize_preview"] = (preview.stdout or "")[-4000:]
+            log((preview.stdout or "")[-2000:])
+            set_run_phase(state, "organizing", "Organizing", "Applying moves")
+            log("Applying organize moves...")
+            org_req.apply = True
+            applied = subprocess.run(
+                build_organizer_command(org_req), capture_output=True, text=True
+            )
+            state.stats["organize_apply"] = (applied.stdout or "")[-4000:]
+            log((applied.stdout or "")[-2000:])
+            # Owned-ASIN cache is now stale for both target and destination roots.
+            with _OWNED_ASIN_LOCK:
+                _OWNED_ASIN_CACHE.clear()
+
+        state.status = "completed" if not failures else "completed_with_errors"
+        set_run_phase(
+            state,
+            "done",
+            "Done",
+            f"{len(completed)} downloaded, {len(failures)} failed",
+        )
+        state.percent = 100.0
+    except Exception as exc:  # noqa: BLE001
+        state.status = "error"
+        state.error = str(exc)
+        set_run_phase(state, "error", "Error", str(exc))
+        log(f"FATAL: {exc}")
+    finally:
+        state.finished_at = time.time()
+        # Invalidate target-folder owned cache so a re-open reflects new books.
+        with _OWNED_ASIN_LOCK:
+            _OWNED_ASIN_CACHE.pop(str(target), None)
+
+
+@app.post("/api/library/download/runs")
+def start_library_download(req: LibraryDownloadRequest) -> dict[str, Any]:
+    if not req.items:
+        raise HTTPException(status_code=400, detail="No books selected.")
+    if not Path(req.auth_file).exists():
+        raise HTTPException(status_code=400, detail="No Audible auth file. Complete auth setup first.")
+    run_id = datetime_id()
+    state = RunState(id=run_id)
+    with runs_lock:
+        runs[run_id] = state
+    thread = threading.Thread(target=run_download_worker, args=(run_id, req), daemon=True)
+    thread.start()
+    return {"id": run_id}
 
 
 # ---------------------------------------------------------------------------
@@ -3474,6 +4094,11 @@ def m4b_tool_page() -> HTMLResponse:
 @app.get("/organizer", response_class=HTMLResponse)
 def organizer_page() -> HTMLResponse:
     return HTMLResponse((STATIC_DIR / "organizer.html").read_text(encoding="utf-8"))
+
+
+@app.get("/library", response_class=HTMLResponse)
+def library_page() -> HTMLResponse:
+    return HTMLResponse((STATIC_DIR / "downloader.html").read_text(encoding="utf-8"))
 
 
 @app.get("/api/scripts")
