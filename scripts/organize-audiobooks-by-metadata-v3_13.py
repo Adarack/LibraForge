@@ -2160,12 +2160,21 @@ def parse_book_folder_name(name: str) -> dict[str, str]:
 def metadata_from_sidecar(item: BookItem) -> dict[str, Any] | None:
     paths: list[Path] = []
     if item.kind == "folder":
+        # Folder-level libraforge.json (alone-in-folder single-file books and
+        # multi-file chapter groups) has no filename prefix — check it first.
+        folder_lf = item.source_path / "libraforge.json"
+        if folder_lf.is_file():
+            paths.append(folder_lf)
         paths.extend(sorted(item.source_path.glob("*.m4b-tool-metadata.json")))
         paths.extend(sorted(item.source_path.glob("*.libraforge.json")))
         paths.extend(sorted(item.source_path.glob("*.audible-metadata-fixer.json")))
         paths.append(item.representative.with_name(item.representative.name + ".libraforge.json"))
         paths.append(item.representative.with_name(item.representative.name + ".audible-metadata-fixer.json"))
     else:
+        # Loose file alone in its folder may have a folder-level libraforge.json.
+        folder_lf = item.source_path.parent / "libraforge.json"
+        if folder_lf.is_file():
+            paths.append(folder_lf)
         paths.append(item.source_path.with_name(item.source_path.name + ".m4b-tool-metadata.json"))
         paths.append(item.source_path.with_name(item.source_path.name + ".libraforge.json"))
         paths.append(item.source_path.with_name(item.source_path.name + ".audible-metadata-fixer.json"))
@@ -2543,13 +2552,14 @@ def infer_metadata(item: BookItem, root: Path, prefer_path_structure: bool = Fal
             if path_title_differs:
                 add_review_reason("title differs between metadata and path")
         elif (
-            not trusted_metadata
-            and normalize_for_compare(title) == normalize_for_compare(series)
+            normalize_for_compare(title) == normalize_for_compare(series)
             and has_distinct_book_title(path_title, series, book_number)
             and not is_marketing_descriptor(path_title)
         ):
+            # title == series is a strong signal the metadata is incomplete or
+            # wrong-matched. Prefer the path title regardless of source trust.
             use_path_title = True
-            add_review_reason("title inferred from path")
+            add_review_reason("title matches series name; path title used instead")
         elif trusted_metadata and path_title_differs:
             if title_conflict_should_trigger_review(
                 metadata_title=metadata_title,
