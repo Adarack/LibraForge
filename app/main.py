@@ -232,7 +232,7 @@ FOUND_RE = re.compile(r"^Found\s+(\d+)\s+supported files\.")
 MODE_RE = re.compile(r"^\s+Mode:\s+([A-Za-z_]+)\s*$")
 DURATION_STATUS_RE = re.compile(r"^\s+Status:\s+([A-Za-z_]+)\s*$")
 DIFF_RE = re.compile(r"^\s+Diff:\s+([0-9.]+)%")
-SUMMARY_RE = re.compile(r"^\s*(Matched|Skipped|Failed):\s+(\d+)\s*$")
+SUMMARY_RE = re.compile(r"^\s*(Matched|Skipped|Failed|Smart-skipped):\s+(\d+)\s*$")
 FILL_STATS_RE = re.compile(r"^\s*(Books filled|Already complete|ASIN filled):\s+(\d+)\s*$")
 SKIP_RE = re.compile(r"^\s+SKIP:\s+(.+)$")
 ERROR_RE = re.compile(r"^\s+ERROR:\s+(.+)$")
@@ -852,6 +852,7 @@ def initial_stats(threshold: float) -> dict[str, Any]:
         "matched": 0,
         "skipped": 0,
         "failed": 0,
+        "smart_skipped": 0,
         "mode_breakdown": {"full": 0, "series_only": 0, "none": 0, "unknown": 0},
         "duration_breakdown": {
             "perfect": 0,
@@ -1030,7 +1031,7 @@ def parse_line(state: RunState, line: str, threshold: float) -> None:
 
     m = SUMMARY_RE.match(line)
     if m:
-        state.stats[m.group(1).lower()] = int(m.group(2))
+        state.stats[m.group(1).lower().replace("-", "_")] = int(m.group(2))
         return
 
     m = FILL_STATS_RE.match(line)
