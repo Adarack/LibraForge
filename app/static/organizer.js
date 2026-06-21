@@ -2,6 +2,18 @@ let currentRun = null;
 let pollTimer = null;
 let latestMoveItems = [];
 
+// Strip the trailing filename from a path so only the directory is shown.
+// Paths ending in a known audio extension are treated as files; others as dirs.
+function pathDir(p) {
+  if (!p) return p;
+  const audioExts = /\.(m4b|m4a|mp3|ogg|opus|flac|aac|wma)$/i;
+  if (audioExts.test(p)) {
+    const idx = p.lastIndexOf('/');
+    return idx > 0 ? p.slice(0, idx) : p;
+  }
+  return p;
+}
+
 const $ = (id) => document.getElementById(id);
 const { escapeHtml, renderDownloadLinks, statCard: stat } = window.UiCommon;
 
@@ -183,8 +195,8 @@ function renderMoves(items) {
         <details class="move-details">
           <summary>Show source, destination, and companion files</summary>
           <div class="file-list">
-            <div class="file-item"><strong>From</strong><br>${escapeHtml(item.source || "-")}</div>
-            <div class="file-item"><strong>To</strong><br>${escapeHtml(item.target || "-")}</div>
+            <div class="file-item"><strong>From</strong><br>${escapeHtml(pathDir(item.source) || "-")}</div>
+            <div class="file-item"><strong>To</strong><br>${escapeHtml(pathDir(item.target) || "-")}</div>
             ${(item.companions || []).length ? `<div class="file-item"><strong>Companions</strong><br>${(item.companions || []).map((entry) => escapeHtml(entry)).join("<br>")}</div>` : ""}
           </div>
         </details>

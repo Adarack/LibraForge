@@ -3515,13 +3515,13 @@ def print_move(move: dict[str, Any]) -> None:
     if metadata.get("book_number"):
         label = normalize_sequence_label(metadata.get("sequence_label", "")) or "Book"
         print(f"  Number: {label} {display_book_number(metadata['book_number'])}")
-    # Always display directory paths only — no individual filenames or companion lists.
-    source_display = move["source"] if move["kind"] == "folder" else move["source"].parent
-    target_display = move["target"] if move["kind"] == "folder" else move["target"].parent
+    # Source and target are always the actual paths (file or folder) so the
+    # backend parser can use them as unique identifiers. The UI JS layer
+    # strips filenames to show clean directory paths in the rendered output.
     print("  MOVE:")
-    print(f"    {source_display}")
+    print(f"    {move['source']}")
     print("  TO:")
-    print(f"    {target_display}")
+    print(f"    {move['target']}")
     print()
 
 
