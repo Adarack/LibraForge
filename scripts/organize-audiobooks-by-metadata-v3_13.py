@@ -3783,7 +3783,9 @@ def main() -> None:
 
     if args.apply and not args.no_structure_cache:
         # Rebuild after apply so future _unorganized runs do not need a full ffprobe scan.
+        print("Rebuilding structure cache...", flush=True)
         build_structure_cache(destination_root, cache_path, args.progress_every)
+        print("Structure cache rebuild complete.", flush=True)
 
     if not args.apply:
         print("Dry-run only. Re-run with --apply to move files.")
