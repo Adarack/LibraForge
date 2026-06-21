@@ -1087,7 +1087,14 @@ def build_report_items(
             detail = str(category_item.get("title", "") or "")
             if detail:
                 item["category_details"][category] = detail
-                if not category.startswith("status:") and not item["title"]:
+                # status: details are skip reasons; fill: details are field lists —
+                # neither is a real book title, so don't let them become the generic
+                # title other categories fall back to.
+                if (
+                    not category.startswith("status:")
+                    and not category.startswith("fill:")
+                    and not item["title"]
+                ):
                     item["title"] = detail
 
     items = sorted(items_by_path.values(), key=lambda item: item["path"])
@@ -2770,7 +2777,7 @@ def fs_ls(path: str = "/") -> dict[str, Any]:
             str(child)
             for child in p.iterdir()
             if child.is_dir() and not any(child.name.startswith(s) for s in _FS_SKIP_PREFIXES)
-        )[:80]
+        )
     except PermissionError:
         dirs = []
     return {"dirs": dirs, "path": str(p)}
@@ -2822,7 +2829,12 @@ def _has_asin(folder: Path, audio_file: Path) -> bool:
 
 
 def _book_audio_files(folder: Path) -> list[Path]:
-    """Direct audio files in a book folder, or files one level down (disc subfolders)."""
+    """Direct audio files in a book folder, or files one level down (disc subfolders).
+
+    A loose audio file (book unit that is itself a file) returns just itself.
+    """
+    if folder.is_file():
+        return [folder] if is_audio_file(folder) else []
     direct = sorted(c for c in folder.iterdir() if c.is_file() and is_audio_file(c))
     if direct:
         return direct
@@ -2841,7 +2853,10 @@ def _find_book_folders(root: Path) -> list[Path]:
     collapsed into its parent so multi-disc books count as one.
     """
     # Walk the full tree, collect every folder that directly contains audio files.
+    # Audio files sitting loose directly inside `root` are each their own book unit
+    # (returned as file paths), so a folder of unorganized loose books is counted.
     audio_folders: set[Path] = set()
+    loose_root_files: list[Path] = []
     try:
         for dirpath, dirnames, filenames in os.walk(str(root)):
             dirnames[:] = sorted(
@@ -2850,6 +2865,9 @@ def _find_book_folders(root: Path) -> list[Path]:
             )
             p = Path(dirpath)
             if p == root:
+                loose_root_files.extend(
+                    p / f for f in sorted(filenames) if is_audio_file(p / f)
+                )
                 continue
             if any(is_audio_file(Path(dirpath) / f) for f in filenames):
                 audio_folders.add(p)
@@ -2865,7 +2883,7 @@ def _find_book_folders(root: Path) -> list[Path]:
         else:
             book_folders.add(folder)
 
-    return sorted(book_folders)
+    return sorted(book_folders) + sorted(loose_root_files)
 
 
 _COVER_NAMES = ("cover.jpg", "cover.png", "folder.jpg", "folder.png", "cover.jpeg")
@@ -2911,6 +2929,8 @@ def _load_scan_cache(path: Path) -> list[tuple[str, str]] | None:
 
 def _has_cover_fast(folder: Path) -> bool:
     """Fast cover heuristic: file covers or any audio file presence."""
+    if folder.is_file():
+        return True  # loose audio book unit — treat as present
     if any((folder / n).is_file() for n in _COVER_NAMES):
         return True
     for ext in _AUDIO_EXTS_COVER:
@@ -2960,7 +2980,8 @@ def scan_folder_route(req: ScanRequest) -> dict[str, Any]:
             return "skip"
         if not audio:
             return "skip"
-        has_asin = _has_asin(folder, audio[0])
+        book_dir = folder if folder.is_dir() else folder.parent
+        has_asin = _has_asin(book_dir, audio[0])
         single_m4b = len(audio) == 1 and audio[0].suffix.lower() == ".m4b"
         if not has_asin:
             return "needs_metadata"
@@ -3077,7 +3098,7 @@ def scan_books_route(req: ScanRequest) -> dict[str, Any]:
             folder, category = fc
             return {
                 "path": str(folder),
-                "title": folder.name,
+                "title": folder.stem if folder.is_file() else folder.name,
                 "author": _book_author(folder, p),
                 "has_cover": _has_cover_fast(folder),
                 "category": category,
@@ -3099,13 +3120,14 @@ def scan_books_route(req: ScanRequest) -> dict[str, Any]:
             return None
         if not audio:
             return None
-        has_asin = _has_asin(folder, audio[0])
+        book_dir = folder if folder.is_dir() else folder.parent
+        has_asin = _has_asin(book_dir, audio[0])
         single_m4b = len(audio) == 1 and audio[0].suffix.lower() == ".m4b"
         if has_asin and (single_m4b or depth > 1):
             return None
         return {
             "path": str(folder),
-            "title": folder.name,
+            "title": folder.stem if folder.is_file() else folder.name,
             "author": _book_author(folder, p),
             "has_cover": _has_cover_fast(folder),
             "category": "needs_metadata" if not has_asin else "needs_conversion",

@@ -468,6 +468,24 @@ function buildCompareTable(result, mode) {
         <td>${escapeHtml(willWrite || '—')}</td>
       </tr>`;
   }).join('');
+  // Duration is informational (the match never rewrites runtime): compare local
+  // runtime against the Audible candidate's, with the match status/diff.
+  const dur = result.duration || {};
+  const fmtMin = (v) => (v || v === 0) ? `${Number(v).toFixed(1)} min` : '';
+  const localDur = fmtMin(local.local_duration_minutes ?? dur.local_minutes);
+  const audibleDurVal = result.duration_minutes ?? dur.audible_minutes;
+  let audibleDur = fmtMin(audibleDurVal);
+  if (audibleDur && dur.status) {
+    const pct = (dur.diff_percent || dur.diff_percent === 0) ? ` · ${dur.diff_percent}%` : '';
+    audibleDur += ` (${dur.status}${pct})`;
+  }
+  const durationRow = `
+      <tr>
+        <th>Duration</th>
+        <td>${escapeHtml(localDur || '—')}</td>
+        <td>${escapeHtml(audibleDur || '—')}</td>
+      </tr>`;
+
   const summary = String(chosenMetadataFor(result, mode).summary ?? '').trim();
   const summaryBlock = summary
     ? `<details class="compare-summary"><summary>Summary</summary><p>${escapeHtml(summary)}</p></details>`
@@ -475,7 +493,7 @@ function buildCompareTable(result, mode) {
   return `
     <table class="compare-table">
       <thead><tr><th>Field</th><th>Current</th><th>Will write</th></tr></thead>
-      <tbody>${rows}</tbody>
+      <tbody>${rows}${durationRow}</tbody>
     </table>
     ${summaryBlock}`;
 }
