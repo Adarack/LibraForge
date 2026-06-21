@@ -208,6 +208,7 @@ function renderStats(stats, startedAt, finishedAt) {
     elapsed ? stat('Run duration', elapsed, 'Total elapsed time for this run.') : '',
     stat('Found', stats.found, 'Supported files discovered before filtering.'),
     stat('Matched', stats.matched, 'Files where the script selected a usable match.'),
+    stats.smart_skipped ? stat('Smart-skipped', stats.smart_skipped, 'Tags already matched the planned values — in-file write skipped by smart mode.') : '',
     stat('Skipped', stats.skipped, 'Files intentionally not processed.'),
     stat('Failed', stats.failed, 'Files that hit an error.'),
     fill ? stat('Fill: books filled', fill.filled, 'Fill-missing: books that gained at least one empty field.') : '',

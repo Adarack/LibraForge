@@ -6772,6 +6772,7 @@ def print_run_summary(
     fill_books_filled: int = 0,
     fill_books_complete: int = 0,
     fill_field_counts: "Counter | None" = None,
+    smart_skip_count: int = 0,
 ) -> None:
     print("Summary:")
     print(f"  Found:   {found} files")
@@ -6803,6 +6804,10 @@ def print_run_summary(
     else:
         print("  none:        0")
     print()
+
+    if write_mode == "smart" and smart_skip_count:
+        print(f"  Smart-skipped:  {smart_skip_count}")
+        print()
 
     if write_mode == "fill-missing":
         field_counts = fill_field_counts or Counter()
@@ -7135,6 +7140,7 @@ def main():
     fill_books_filled = 0
     fill_books_complete = 0
     fill_field_counts: Counter = Counter()
+    smart_skip_count = 0
     search_cache: dict = {}
     search_cache_lock = threading.Lock()
     search_in_flight: dict = {}
@@ -7312,6 +7318,8 @@ def main():
                         fill_books_filled += 1
                         for filled_field in filled_fields:
                             fill_field_counts[filled_field] += 1
+                elif write_mode == "smart" and skip_write:
+                    smart_skip_count += 1
             else:
                 effective_metadata, skip_write, write_note = metadata, False, ""
 
@@ -7440,6 +7448,7 @@ def main():
         fill_books_filled=fill_books_filled,
         fill_books_complete=fill_books_complete,
         fill_field_counts=fill_field_counts,
+        smart_skip_count=smart_skip_count,
     )
 
     if args.show_asin_report:
