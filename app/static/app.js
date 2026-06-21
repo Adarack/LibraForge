@@ -37,6 +37,12 @@ function collectRequest() {
   const prefs = window.LibraForgePrefs?.get() || {};
   const ignoredFolders = (prefs.ignoredFolders || []).map(f => f.trim()).filter(Boolean);
   const skipPatterns = $('skipPatterns').value.split('\n').map((s) => s.trim()).filter(Boolean);
+  if ($('usePersistentSkip')?.checked) {
+    const persistent = (prefs.persistentSkipPatterns || '').split('\n').map(s => s.trim()).filter(Boolean);
+    for (const p of persistent) {
+      if (!skipPatterns.includes(p)) skipPatterns.push(p);
+    }
+  }
   return {
     script_name: $('script').value,
     target_path: $('targetPath').value.trim(),
