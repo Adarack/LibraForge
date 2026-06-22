@@ -3031,20 +3031,25 @@ def _scan_book_units(p: Path) -> list[tuple[Path, list[Path], Path]]:
     return out
 
 
-def _categorise_book_unit(audio: list[Path], book_dir: Path, root: Path) -> str:
+def _categorise_book_unit(audio: list[Path], book_dir: Path, scan_root: Path) -> str:
     if not audio:
         return "skip"
-    try:
-        depth = len(book_dir.relative_to(root).parts)
-    except ValueError:
-        depth = 1
     has_asin = _has_asin(book_dir, audio[0])
     single_m4b = len(audio) == 1 and audio[0].suffix.lower() == ".m4b"
     if not has_asin:
         return "needs_metadata"
-    if single_m4b:
+    if not single_m4b:
+        return "needs_conversion"
+    # "organized" only when scanning the library root itself and the book sits in a
+    # proper Author/... subdirectory (depth > 1 under AUDIOBOOKS_ROOT). Anything
+    # scanned from a subfolder (e.g. _unorganized) is always "ready_to_organize".
+    if scan_root == AUDIOBOOKS_ROOT:
+        try:
+            depth = len(book_dir.relative_to(AUDIOBOOKS_ROOT).parts)
+        except ValueError:
+            depth = 1
         return "organized" if depth > 1 else "ready_to_organize"
-    return "needs_conversion"
+    return "ready_to_organize"
 
 
 _COVER_NAMES = ("cover.jpg", "cover.png", "folder.jpg", "folder.png", "cover.jpeg")
@@ -3148,7 +3153,7 @@ def scan_folder_route(req: ScanRequest) -> dict[str, Any]:
     organized = 0
     book_results: list[tuple[Path, str]] = []
 
-    with ThreadPoolExecutor(max_workers=8) as pool:
+    with ThreadPoolExecutor(max_workers=10) as pool:
         for unit, category in zip(units, pool.map(categorise, units)):
             book_results.append((unit[0], category))
             if category == "needs_metadata":
@@ -3257,7 +3262,7 @@ def scan_books_route(req: ScanRequest) -> dict[str, Any]:
                 "category": category,
             }
 
-        with ThreadPoolExecutor(max_workers=8) as pool:
+        with ThreadPoolExecutor(max_workers=10) as pool:
             books = list(pool.map(fast_entry, attention))
         books.sort(key=lambda b: (b["category"], b["title"].lower()))
         return {"books": books, "total": len(books)}
@@ -3281,7 +3286,7 @@ def scan_books_route(req: ScanRequest) -> dict[str, Any]:
         }
 
     books = []
-    with ThreadPoolExecutor(max_workers=8) as pool:
+    with ThreadPoolExecutor(max_workers=10) as pool:
         for entry in pool.map(make_book_entry, units):
             if entry is not None:
                 books.append(entry)
