@@ -1,0 +1,57 @@
+name: Organizer issue
+description: Folder Forge planned a wrong move, used a bad path, or failed to move a book
+labels: ["organizer"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        **Replace real paths with placeholders.** Use `Author/Series/Book` style
+        descriptions instead of actual folder names where possible.
+
+  - type: dropdown
+    id: issue-type
+    attributes:
+      label: Issue type
+      options:
+        - Wrong destination path planned
+        - Series or title extracted incorrectly
+        - Book number wrong or missing
+        - Duplicate destination detected incorrectly
+        - Move failed / permission error
+        - Other
+    validations:
+      required: true
+
+  - type: textarea
+    id: description
+    attributes:
+      label: Description
+      description: What path was planned or applied, and what should it have been?
+      placeholder: |
+        Planned: Author/Series 1/Book 02 - Title
+        Expected: Author/Series/01 - Title
+    validations:
+      required: true
+
+  - type: input
+    id: source-structure
+    attributes:
+      label: Source folder structure (redacted)
+      placeholder: e.g. "[Author] - [Series] 01 - [Title]"
+
+  - type: textarea
+    id: metadata
+    attributes:
+      label: Metadata used (redacted)
+      description: What title, author, series, and book number were in the sidecar or embedded tags?
+      placeholder: |
+        Title: ...
+        Author: ...
+        Series: ...
+        Book #: ...
+
+  - type: input
+    id: version
+    attributes:
+      label: Commit / branch
+      placeholder: e.g. main @ abc1234
