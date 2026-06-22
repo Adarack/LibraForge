@@ -122,8 +122,13 @@ Common commands: `make up`, `make down`, `make logs`, `make restart`, `make test
 - The `/auth` directory is mounted **read-write** so the app can add, switch, and
   disconnect accounts. Point `AUDIBLE_AUTH_PATH` at a dedicated directory - not your
   primary audible-cli config - and keep it off untrusted networks.
-- Do not expose LibraForge to an untrusted network. Access control is host-level only;
-  anyone who can reach the port can use it.
+
+**Do not expose LibraForge to an untrusted network.** It can write file metadata, move
+files, launch conversions, and access your Audible account. There is no built-in
+authentication - anyone who can reach the port has full access. Run it behind
+[Tailscale](https://tailscale.com/), a VPN, or a reverse proxy with authentication
+(e.g. Caddy `basicauth`, Authelia). The default `127.0.0.1` binding keeps it
+localhost-only; do not change this without adding access control.
 
 ## Development
 

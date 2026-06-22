@@ -1,0 +1,51 @@
+name: M4B conversion issue
+description: M4B Tool produced a bad output, failed, or reported unexpected codec/chapter info
+labels: ["m4b"]
+body:
+  - type: dropdown
+    id: issue-type
+    attributes:
+      label: Issue type
+      options:
+        - Conversion failed with an error
+        - Output file is corrupt or unplayable
+        - Chapters missing or wrong
+        - Cover art missing
+        - Wrong codec / bitrate used
+        - Duration mismatch between source and output
+        - Other
+    validations:
+      required: true
+
+  - type: textarea
+    id: description
+    attributes:
+      label: Description
+      description: What happened? What did you expect?
+    validations:
+      required: true
+
+  - type: input
+    id: source-format
+    attributes:
+      label: Source format
+      placeholder: e.g. 3x .mp3 @ 128kbps stereo 44.1kHz
+
+  - type: input
+    id: output-format
+    attributes:
+      label: Output format requested
+      placeholder: e.g. M4B merge, No conversion
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: Redacted log output
+      description: Paste relevant lines from the job log. Remove real paths.
+      render: text
+
+  - type: input
+    id: version
+    attributes:
+      label: Commit / branch
+      placeholder: e.g. main @ abc1234

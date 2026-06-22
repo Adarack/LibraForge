@@ -1,0 +1,75 @@
+name: Metadata mismatch
+description: The fixer matched the wrong Audible title, or failed to match at all
+labels: ["metadata", "matching"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        **Do not include real audiobook file paths, full folder names, or any other
+        personally identifying information.** Use placeholders like `[Book Title]` and
+        `[Author Name]` if needed.
+
+  - type: input
+    id: book-title
+    attributes:
+      label: Book title (as Audible lists it)
+      placeholder: e.g. "Project Hail Mary"
+    validations:
+      required: true
+
+  - type: input
+    id: author
+    attributes:
+      label: Author
+      placeholder: e.g. "Andy Weir"
+    validations:
+      required: true
+
+  - type: dropdown
+    id: match-result
+    attributes:
+      label: Match result
+      options:
+        - Wrong match (matched a different title)
+        - No match (skipped / no candidates)
+        - Correct match but wrong score/mode
+        - ASIN mismatch flagged incorrectly
+    validations:
+      required: true
+
+  - type: input
+    id: expected-asin
+    attributes:
+      label: Expected Audible ASIN
+      placeholder: e.g. B08G9PRS1K
+
+  - type: input
+    id: actual-asin
+    attributes:
+      label: Actual matched ASIN (if any)
+      placeholder: e.g. B07XXXXXXXXXXX
+
+  - type: input
+    id: duration
+    attributes:
+      label: File duration
+      placeholder: e.g. 16h 02m
+
+  - type: input
+    id: file-ext
+    attributes:
+      label: File format
+      placeholder: e.g. .m4b, .mp3
+
+  - type: input
+    id: mode
+    attributes:
+      label: Write mode used
+      placeholder: e.g. smart, fill-missing, overwrite
+
+  - type: textarea
+    id: report-excerpt
+    attributes:
+      label: Redacted report excerpt
+      description: Paste the relevant line(s) from the report. Replace real paths with placeholders.
+      render: text
